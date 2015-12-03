@@ -7,6 +7,7 @@ import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PitchModel {
@@ -40,9 +41,53 @@ public class PitchModel {
 		sendHandCounts();
 	}
 	
-	public static void discard(ArrayList<Card> from, int index)
+	/**
+	 * Moves all cards to deck and shuffles
+	 */
+	public void resetState()
 	{
-		discardPile.add(from.remove(index));
+		// move all table cards to discard pile
+		clearTable();
+		
+		// move discard to deck
+		drainToDeck(discardPile);
+		
+		// move hands to deck
+		for (int i = 0; i < players.size(); i++)
+		{
+			drainToDeck(players.get(i).hand);
+		}	
+		deck.shuffle();
+		sendOutCommand("RESET");
+	}
+	
+	/**
+	 * Clears out table cards and moves them to the discard pile
+	 */
+	public void clearTable()
+	{
+		// go through all cards on table and put them in the deck
+		for (Entry<Card, Point> e : tableCards.entrySet())
+		{
+			discardPile.add(e.getKey());	
+		}
+		
+		// clear the table list
+		tableCards.clear();
+	}
+	
+	/**
+	 * Takes all cards from a list and puts them in deck
+	 * @param from    list to drain
+	 */
+	public void drainToDeck(ConcurrentArrayList<Card> from)
+	{
+		while (from.size() > 0)
+		{
+			Card last = from.get(from.size() - 1);
+			from.remove(last);
+			deck.add(last);
+		}
 	}
 	
 	public void sendHandCounts()
@@ -221,13 +266,39 @@ public class PitchModel {
 							sendHandCounts();	
 						}
 					}
+					else if (request.startsWith("DISCARD"))
+					{
+						String[] info = request.substring(8).split(" ");
+						String cardString = info[0] + " " + info[1];
+						Card card = stringToRef.get(cardString);
+						
+						// if in hand remove it and send to that player, send out counts
+						if (hand.contains(card))
+						{
+							hand.remove(card);
+							discardPile.add(card);
+							output.println(request);
+							sendHandCounts();
+						}
+						// if card is on table, send out to all players
+						else if (tableCards.containsKey(card))
+						{
+							tableCards.remove(card);
+							discardPile.add(card);
+							sendOutCommand(request);
+						}
+					}
+					else if (request.startsWith("RESET"))
+					{
+						resetState();
+					}
 					sleep(10);
 				}
 			}
 			catch (Exception e)
 			{
 				players.remove(this);
-				System.out.println("Player lost: " + e);
+				System.out.println("Player dropped: " + e);
 			}
 		}
 	}

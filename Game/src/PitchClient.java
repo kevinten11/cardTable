@@ -19,6 +19,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
 import javax.imageio.ImageIO;
@@ -353,6 +354,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				String info[] = response.substring(8).split(" ");
         				String card = info[0] + " " + info[1];
         				
+        				// remove from hand or table
         				if (tableCards.contains(card))
         				{
         					tableCards.remove(card);
@@ -361,6 +363,16 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				{
         					hand.remove(card);
         				}
+        				
+        				// remove the click box
+        				if (cardClickBoxes.containsKey(card))
+        				{
+        					cardClickBoxes.remove(card);
+        				}
+        			}
+        			else if (response.startsWith("RESET"))
+        			{
+        				resetState();
         			}
         			else
         			{
@@ -543,6 +555,92 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         } 
 
         /**
+         * Reset game to initial state
+         */
+        public void resetState()
+        {
+        	tableCards.clear();
+        	hand.clear();
+        	visibleCards.clear();
+        	cardClickBoxes.clear();
+        	selectedCard = "";
+        	for (int i = 0; i < handCounts.length; i++)
+        	{
+        		handCounts[i] = "0";
+        	}
+        }
+        
+        /**
+         * Orders the hand
+         */
+        public void orderHand()
+        {
+        	for (int i = 0; i < hand.size(); i++) // for each hand index
+        	{
+        		// insertion sort
+        		for (int j = 0; j < i; j++)
+        		{
+        			if (!pairIsInOrder(hand.get(j), hand.get(i)))
+        			{
+        				String value = hand.get(i);
+        				hand.remove(i);
+        				hand.add(j, value);
+        				break;
+        			}
+        		}
+        	}
+        }
+        
+        /**
+         * Takes in to cards and compares them
+         * @param c1
+         * @param c2
+         * @return true if they were passed in, in correct order
+         */
+        public boolean pairIsInOrder(String c1, String c2)
+        {
+        	HashMap<String, Integer> suitRanking = new HashMap<String, Integer>();
+        	suitRanking.put("clubs", 1);
+        	suitRanking.put("diamonds", 2);
+        	suitRanking.put("spades", 3);
+        	suitRanking.put("hearts", 4);
+        	
+        	// red and black for jokers
+        	suitRanking.put("red", 5);
+        	suitRanking.put("black", 6);
+        	
+        	String[] info1 = c1.split(" ");
+    		String[] info2 = c2.split(" ");
+    		
+        	if (info1.length != 2 || info2.length != 2)
+        	{
+        		return false;
+        	}
+        	
+        	String s1 = info1[0];
+        	String s2 = info2[0];
+        	int p1 = Integer.parseInt(info1[1]);
+        	int p2 = Integer.parseInt(info2[1]);
+        	
+        	if (suitRanking.get(s1) < suitRanking.get(s2))
+        	{
+        		return true;
+        	}
+        	else if (suitRanking.get(s1) > suitRanking.get(s2))
+        	{
+        		return false;
+        	}
+        	else // tied suit
+        	{
+        		if (p1 < p2)
+        		{
+        			return true; 
+        		}
+        		return false;
+        	}  	
+        }
+        
+        /**
          * Reads in card images from resources
          */
         public void readInCardImages()
@@ -691,29 +789,41 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 		}
 
 		@Override
-		public void keyReleased(KeyEvent e) {
-			// TODO Auto-generated method stub
+		public void keyReleased(KeyEvent e) 
+		{
+			// shortcut commands
+			if (e.getKeyCode() == KeyEvent.VK_D)
+			{
+				out.println("DRAW FROM DECK");
+			}		
+			else if (e.getKeyCode() == KeyEvent.VK_T)
+			{
+				// if a card is selected, discard that card
+				if (!selectedCard.isEmpty())
+				{
+					out.println("DISCARD " + selectedCard);
+					selectedCard = "";
+				}
+			}
+			else if (e.getKeyCode() == KeyEvent.VK_R)
+			{
+				// get confirm for reset
+				int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to reset the game?");
+				if (confirm == JOptionPane.OK_OPTION)
+				{
+					out.println("RESET");
+				}
+			}
+			else if (e.getKeyCode() == KeyEvent.VK_O)
+			{
+				orderHand();
+			}
 			
 		}
 
 		@Override
 		public void keyTyped(KeyEvent e) {
-			// TODO Auto-generated method stub
-			if (e.getKeyChar() == 'd' || e.getKeyChar() == 'D')
-			{
-				out.println("DRAW FROM DECK");
-			}		
-			if (e.getKeyChar() == 'c' || e.getKeyChar() == 'C')
-			{
-				if (!selectedCard.isEmpty())
-				{
-					out.println("DISCARD " + selectedCard);
-				}
-			}
-			if (e.getKeyChar() == 's' || e.getKeyChar() == 'S')
-			{
-				out.println("RESET");
-			}
+				
 		}
 
 		@Override
@@ -761,20 +871,34 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					tableCards.add(selectedCard);
 				}
 			}
-			// if empty space was clicked and a card was selected
+			// if table space was clicked and a card was selected
 			else if (!selectedCard.isEmpty())
 			{
+				// from hand
 				if (hand.contains(selectedCard))
 				{
 					// place card and set selected card to empty
 					Point playSpot = getGhostCardPoint();
 					
-					String request;
+					String request = "";
 					if (playSpot.y  > handThresholdY)
 					{
-						// do nothing
-						selectedCard = "";
-						return;
+						// if no card was clicked
+						if (clickedCard.isEmpty())
+						{
+							// do nothing
+							selectedCard = "";
+							return;
+						}
+						// if a card in your hand was clicked, then swap
+						else if (hand.contains(clickedCard))
+						{
+							// swap cards in hand
+							int sIndex = hand.indexOf(selectedCard);
+							int cIndex = hand.indexOf(clickedCard);
+							hand.set(sIndex, clickedCard);
+							hand.set(cIndex, selectedCard);
+						}
 					}
 					else
 					{
@@ -788,6 +912,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					selectedCard = "";
 				}
 				
+				// from table
 				if (tableCards.contains(selectedCard))
 				{
 					Point playSpot = getGhostCardPoint();
