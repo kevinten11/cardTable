@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Hashtable;
 import javax.imageio.ImageIO;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane; 
 
@@ -30,7 +31,8 @@ import javax.swing.JOptionPane;
  */ 
 @SuppressWarnings("serial")
 public class PitchClient extends JFrame implements KeyListener, MouseListener
-{        
+{       
+		// card hitbox class
 		public class Bounds
 		{
 			int topLeftX;
@@ -65,13 +67,13 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			}
 		}
 
-		boolean isRunning = true; 
-        int cardWidth = 500/5;
-        //int cardHeight = 726/5;
-        int cardHeight = 500/5;
+        int cardWidth = 500/7;
+        // cardHeight = 726/5; this is the image height
+        int cardHeight = 500/7;
         int fps = 30; 
         int windowWidth = 1200; 
         int windowHeight = 700;
+        int handThresholdY;
         static int PORT = 8901;
         Socket socket;
         BufferedReader in;
@@ -93,18 +95,52 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         String[] handCounts;
         
         // sets up connection
-        public PitchClient(String serverAddress)
+        public PitchClient()
         {
-        	try {
-				socket = new Socket(serverAddress, PORT);
-				JOptionPane.showMessageDialog(this, "Connection Success");
-				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-	        	out = new PrintWriter(socket.getOutputStream(), true);
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				JOptionPane.showMessageDialog(this, "Network Connection Error: " + e.getMessage());
-			}
+        	// loop to retry if user messes up the IP address
+        	while (true)
+        	{
+	        	String serverAddress = JOptionPane.showInputDialog("Enter Host IP");
+	    		if (serverAddress.isEmpty())
+	    		{
+	    			serverAddress = "localhost";
+	    		}
+	    		
+	    		// display loading window
+	    		JOptionPane pane = new JOptionPane();
+        		JDialog loadingDialog = pane.createDialog(this, "Message:");
+        		pane.setMessage("Connecting...");
+        		loadingDialog.setModal(false);
+        		loadingDialog.setVisible(true);
+	    		
+	        	try 
+	        	{       		
+	        		// try connection
+					socket = new Socket(serverAddress, PORT);
+					
+					// success, remove loading window and show success
+					loadingDialog.dispose();
+					JOptionPane.showMessageDialog(this, "Connection Success");
+					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+		        	out = new PrintWriter(socket.getOutputStream(), true);
+		        	break;
+				} catch (Exception e) 
+	        	{
+					
+					// display error and remove loading window
+					loadingDialog.dispose();
+					JOptionPane.showMessageDialog(this, "Network Connection Error: " + e.getMessage());
+					
+					// prompt for retry
+					int tryAgain = JOptionPane.showConfirmDialog(this, "Try again?");
+					if (tryAgain != JOptionPane.OK_OPTION)
+					{
+						System.exit(0);
+					}
+				}
+        	}
         	
+        	// set up UI and load resources
         	initializeUI();
         	readInCardImages();
         	this.addKeyListener(this);
@@ -112,11 +148,8 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         }
         
         public static void main(String[] args) throws Exception
-        { 
-    		String serverAddress = (args.length == 0) ? "localhost" : args[1];
-    		serverAddress = JOptionPane.showInputDialog("Enter IP or LAN Name");
-    		
-            PitchClient game = new PitchClient(serverAddress);
+        { 		
+            PitchClient game = new PitchClient();
             game.run();
             System.exit(0); 
         } 
@@ -135,29 +168,34 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             insets = getInsets(); 
             setSize(insets.left + windowWidth + insets.right, 
                             insets.top + windowHeight + insets.bottom); 
+            handThresholdY = windowHeight - cardWidth - getInsets().top;
             
             backBuffer = new BufferedImage(windowWidth, windowHeight, BufferedImage.TYPE_INT_ARGB); 
             try {
             	// read in background
-    		    background = ImageIO.read(new File("Resources\\Background-Green.jpg"));
+    		    background = ImageIO.read(new File("Resources" + File.separatorChar + "Background-Green.jpg"));
     		    background = background.getScaledInstance(windowWidth, windowHeight, Image.SCALE_SMOOTH);
     		    
     		    // read in card back
-    		    cardBack = ImageIO.read(new File("Resources\\playing-card-back.jpg"));
+    		    cardBack = ImageIO.read(new File("Resources" + File.separatorChar + "playing-card-back.jpg"));
     		    cardBack = cardBack.getScaledInstance(cardWidth, cardHeight, Image.SCALE_SMOOTH);
     		    
     		} catch (IOException e) 
     		{
     			System.out.println("ErrorOnReadInResources");
-    			JOptionPane.showMessageDialog(this, "ErrorOnReadInResources");
+    			String s = "ErrorOnReadInResources: ";
+    			for (StackTraceElement element : e.getStackTrace())
+    			{
+    				s += element.toString() + "\n";
+    			}
+    			JOptionPane.showMessageDialog(this, s);
     			System.exit(1);
     		}
         } 
-
-        
+      
         /** 
          * This method will check for input, move things 
-         * around and check for win conditions, etc 
+         * around and check for win conditions, ect
          */ 
         void run() throws Exception
         { 
@@ -176,6 +214,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         		if (response.startsWith("TABLE:") && response.length() > 6)
         		{
         			System.out.println(response);
+        			
         			// pattern in info is suit, power, x, y, vis
         			String[] info = response.substring(7).split(" ");
         			System.out.println(info.length + " " + info[0]);
@@ -184,8 +223,12 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				String card = info[i] + " " + info[i+1];
         				int x = Integer.parseInt(info[i+2]);
         				int y = Integer.parseInt(info[i+3]);
-        				y = windowHeight - y - cardHeight;
-        				x = windowWidth/2 + (windowWidth/2 - x) - cardWidth;
+        				
+        				// info is from player 0 perspective so alter it
+        				Point transLocation = fitToPerspective(x, y, 0, playerNum);
+        				x = transLocation.x;
+        				y = transLocation.y;
+
         				Bounds bounds = new Bounds(x, y, x + cardWidth, y + cardHeight);
         				tableCards.add(card);
         				cardClickBoxes.put(card, bounds);  	
@@ -211,7 +254,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         			// if null, sleep for a bit
         			if (response == null)
         			{
-        				Thread.sleep(100);
+        				Thread.sleep(50);
         				continue;
         			}
         			
@@ -247,11 +290,11 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				int x = Integer.parseInt(info[2]);
         				int y = Integer.parseInt(info[3]);
         				
-        				if (Integer.parseInt(info[4]) != playerNum)
-        				{
-        					y = windowHeight - y - cardHeight;
-        					x = windowWidth/2 + (windowWidth/2 - x) - cardWidth;
-        				}
+        				// translate point
+        				Point newPoint = fitToPerspective(x,y,0, playerNum);
+        				
+        				x = newPoint.x;
+        				y = newPoint.y;
         				
         				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
         				cardClickBoxes.put(card, bound);
@@ -266,11 +309,11 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				int x = Integer.parseInt(info[2]);
         				int y = Integer.parseInt(info[3]);
         				
-        				if (Integer.parseInt(info[4]) != playerNum)
-        				{
-        					y = windowHeight - y - cardHeight;
-        					x = windowWidth/2 + (windowWidth/2 - x) - cardWidth;
-        				}
+        				// translate point
+        				Point newPoint = fitToPerspective(x,y,0, playerNum);
+        				
+        				x = newPoint.x;
+        				y = newPoint.y;
         				
         				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
         				cardClickBoxes.replace(card, bound);
@@ -304,7 +347,38 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				}
         				tableCards.remove(card);
         			}
+        			else if (response.startsWith("DISCARD"))
+        			{
+        				// info is suit, power
+        				String info[] = response.substring(8).split(" ");
+        				String card = info[0] + " " + info[1];
+        				
+        				if (tableCards.contains(card))
+        				{
+        					tableCards.remove(card);
+        				}
+        				else if (hand.contains(card))
+        				{
+        					hand.remove(card);
+        				}
+        			}
+        			else
+        			{
+        				// if we get an unintended sever call, just sleep a bit
+        				Thread.sleep(50);
+        			}
+        			updateGraphics();
         		}    		
+        	}
+        	catch (Exception e)
+        	{
+        		String s = "Run Loop Error: ";
+    			for (StackTraceElement element : e.getStackTrace())
+    			{
+    				s += element.toString() + "\n";
+    			}
+    			JOptionPane.showMessageDialog(this, s);
+        		System.exit(1);
         	}
         	finally
         	{
@@ -376,15 +450,52 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             	            	
             }
             
-            // draw opponents cards
+            // paint opponents cards
             if (handCounts != null && handCounts.length > 1)
             {
-            	int oppHandCount = Integer.parseInt(handCounts[((playerNum + 1) %2)]);
-            	int totalW = (cardWidth * (oppHandCount+1))/2;
-            	int firstX = windowWidth/2 - totalW/2;
-            	for (int i = 0; i < oppHandCount; i++)
+            	for (int c = 0; c < handCounts.length; c++)
             	{
-            		bbg.drawImage(cardBack, firstX + cardWidth*i/2, 0, null);
+            		// if it's you, don't do anything
+            		if (c == playerNum)
+            		{
+            			continue;
+            		}
+            		
+            		// compute offset
+            		int offset = c - playerNum;
+            		int oppHandCount = Integer.parseInt(handCounts[c]);
+            		int totalW = (cardWidth * (oppHandCount+1))/2;
+            		
+            		// adjust to positive
+            		if (offset < 0)
+            		{
+            			offset += 4;
+            		}
+            		
+            		if (offset == 1) // left player
+            		{
+            			int firstY = windowHeight/2 - totalW/2;
+            			for (int i = 0; i < oppHandCount; i++)
+		            	{
+		            		bbg.drawImage(cardBack, 0, firstY + cardHeight*i/2, null);
+		            	}
+            		}
+            		else if (offset == 2) // across player
+            		{
+		            	int firstX = windowWidth/2 - totalW/2;
+		            	for (int i = 0; i < oppHandCount; i++)
+		            	{
+		            		bbg.drawImage(cardBack, firstX + cardWidth*i/2, 0, null);
+		            	}
+            		}
+            		else if (offset == 3) // right player
+            		{
+            			int firstY = windowHeight/2 - totalW/2;
+            			for (int i = 0; i < oppHandCount; i++)
+		            	{
+		            		bbg.drawImage(cardBack, windowWidth-cardHeight, firstY + cardHeight*i/2, null);
+		            	}
+            		}
             	}
             }
             
@@ -413,8 +524,12 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
                 	bbg.drawImage(cardBack, ghostCard.x, ghostCard.y, null);
             	}
                 
+                // change opacity back
+                opacity = 1f;
+                bbg.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity));
+                
                 // if the player would pick up the card, draw border around hand
-                if (ghostCard.y > windowHeight - cardWidth)
+                if (ghostCard.y > handThresholdY)
                 {
                 	bbg.setColor(Color.YELLOW);
  	                bbg.setStroke(new BasicStroke(2));
@@ -427,11 +542,13 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             g.drawImage(backBuffer, insets.left, insets.top, this); 
         } 
 
-        
+        /**
+         * Reads in card images from resources
+         */
         public void readInCardImages()
         {
         	cardImages = new Hashtable<String, Image>();
-        	File resources = new File("Resources\\Cards");
+        	File resources = new File("Resources" + File.separatorChar + "Cards");
     		for (File f : resources.listFiles())
         	{
         		Image image = null;
@@ -484,6 +601,10 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         	}
         }
 
+        /**
+         * Gets the location of the upper left of the ghost card
+         * @return the point of the upper left of the ghost card
+         */
 		public Point getGhostCardPoint()
 		{
 			Point mouse = MouseInfo.getPointerInfo().getLocation();
@@ -496,7 +617,70 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             {
             	y = cardHeight;
             }
+            if (x < cardWidth)
+            {
+            	x = cardWidth;
+            }
+            if (x > windowWidth - 2 * cardWidth)
+            {
+            	x = windowWidth - 2 * cardWidth;
+            }
             return new Point(x, y);
+		}
+		
+		/**
+		 * Converts a point to a different player's perspective
+		 * @param x from x
+		 * @param y from y
+		 * @param fromPlayer player number to convert from
+		 * @param toPlayer	player number to convert to
+		 * @return the converted point
+		 */
+		public Point fitToPerspective(int x, int y, int fromPlayer, int toPlayer)
+		{
+			int tempHeight = windowHeight - 2*cardHeight;
+			int tempWidth = windowWidth - 2*cardWidth;
+			
+			int offset = (fromPlayer - toPlayer);
+			if (offset < 0)
+			{
+				offset += 4;
+			}
+			
+			// System.out.println("Offset: " + offset);
+			// System.out.println("In Coords: " + x + " " + y);
+			
+			// get the center of the card and take off the boundaries
+			x = x + cardWidth/2 - cardWidth;
+			y = y + cardHeight/2 -  cardHeight;
+			
+			int newX = x;
+			int newY = y;
+			
+			// go one to the right ex 1 to 0
+			if (offset == 1)
+			{
+				newY = (x*tempHeight)/tempWidth;
+				newX = ((tempHeight - y)*tempWidth)/tempHeight;
+			}
+			// go across
+			else if (offset == 2)
+			{
+				newY = tempHeight - y;
+				newX = tempWidth - x;
+			}
+			// rotate to the left ex. 0 to 1
+			else if (offset ==  3)
+			{
+				newX = (y*tempWidth)/tempHeight;
+				newY = ((tempWidth - x)*tempHeight)/tempWidth; 
+			}			
+			// get the upper left
+			newX = newX - cardWidth/2 + cardWidth;
+			newY = newY - cardHeight/2 +  cardHeight;
+			
+			// System.out.println("Out Coords: " + newX + " " + newY);
+			return new Point(newX, newY);
 		}
         
         @Override
@@ -519,6 +703,17 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			{
 				out.println("DRAW FROM DECK");
 			}		
+			if (e.getKeyChar() == 'c' || e.getKeyChar() == 'C')
+			{
+				if (!selectedCard.isEmpty())
+				{
+					out.println("DISCARD " + selectedCard);
+				}
+			}
+			if (e.getKeyChar() == 's' || e.getKeyChar() == 'S')
+			{
+				out.println("RESET");
+			}
 		}
 
 		@Override
@@ -575,7 +770,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					Point playSpot = getGhostCardPoint();
 					
 					String request;
-					if (playSpot.y + cardHeight > windowHeight)
+					if (playSpot.y  > handThresholdY)
 					{
 						// do nothing
 						selectedCard = "";
@@ -583,7 +778,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					}
 					else
 					{
-						request = "PLACE " + selectedCard + " " + playSpot.x + " " + playSpot.y;
+						// convert to player 0's view
+						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);						
+						request = "PLACE " + selectedCard + " " + p.x + " " + p.y;
 					}
 					
 					System.out.println("Request: " + request);
@@ -595,15 +792,18 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 				{
 					Point playSpot = getGhostCardPoint();
 					
+					
 					// if card placed in hand, pickup instead of move
 					String request;					
-					if (playSpot.y + cardHeight > windowHeight)
+					if (playSpot.y  > handThresholdY)
 					{
 						request = "PICKUP " + selectedCard;
 					}
 					else
 					{
-						request = "MOVE " + selectedCard + " " + playSpot.x + " " + playSpot.y;
+						// convert to player 0's view
+						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);	
+						request = "MOVE " + selectedCard + " " + p.x + " " + p.y;
 					}
 					
 					System.out.println("Request: " + request);

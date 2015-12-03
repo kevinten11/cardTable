@@ -10,7 +10,7 @@ public class PitchServer {
 		PitchModel model = new PitchModel();
 		try
 		{
-			for (int i = 0; i < 2; i++)
+			for (int i = 0; i < 4; i++)
 			{
 				System.out.println("Call for Plr:" + i);
 				model.addPlayer(listener.accept(), i);
