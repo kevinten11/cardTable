@@ -20,8 +20,6 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Hashtable;
 import javax.imageio.ImageIO;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
@@ -68,6 +66,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			}
 		}
 
+		String tableName;
         int cardWidth = 500/7;
         // cardHeight = 726/5; this is the image height
         int cardHeight = 500/7;
@@ -80,28 +79,37 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         BufferedReader in;
         PrintWriter out;
         int playerNum;
-        Hashtable<String, Image> cardImages;
+        HashMap<Card, Image> cardImages;
         
-        Hashtable<String, Bounds> cardClickBoxes = new Hashtable<String, Bounds>();
+        HashMap<Card, Bounds> cardClickBoxes = new HashMap<Card, Bounds>();
           
         BufferedImage backBuffer; 
         Insets insets; 
         Image background;
         Image cardBack; 
-        String selectedCard = "";
+        Card selectedCard;
         
-        ArrayList<String> hand = new ArrayList<String>();
-        ArrayList<String> tableCards = new ArrayList<String>();
-        HashSet<String> visibleCards = new HashSet<String>();
+        ArrayList<Card> hand = new ArrayList<Card>();
+        ArrayList<Card> tableCards = new ArrayList<Card>();
         String[] handCounts;
         
-        // sets up connection
+        Point initialClick;
+        boolean leftMouseDown = false;
+        
+        /**
+         * sets up connection
+         */
         public PitchClient()
         {
         	// loop to retry if user messes up the IP address
         	while (true)
         	{
 	        	String serverAddress = JOptionPane.showInputDialog("Enter Host IP");
+	        	
+	        	if (serverAddress == null)
+	        	{
+	        		System.exit(0);
+	        	}
 	    		if (serverAddress.isEmpty())
 	    		{
 	    			serverAddress = "localhost";
@@ -121,13 +129,22 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					
 					// success, remove loading window and show success
 					loadingDialog.dispose();
-					JOptionPane.showMessageDialog(this, "Connection Success");
+					tableName = JOptionPane.showInputDialog("Name of table to create or join:");
 					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 		        	out = new PrintWriter(socket.getOutputStream(), true);
+		        	out.println(tableName);
+		        	String reply = in.readLine();
+		        	if (reply.equals("FOUND"))
+		        	{
+		        		JOptionPane.showMessageDialog(this, "Joined Table: " + tableName);
+		        	}
+		        	else
+		        	{
+		        		JOptionPane.showMessageDialog(this, "Table name not found, creating table: " + tableName);
+		        	}	        	
 		        	break;
 				} catch (Exception e) 
-	        	{
-					
+	        	{				
 					// display error and remove loading window
 					loadingDialog.dispose();
 					JOptionPane.showMessageDialog(this, "Network Connection Error: " + e.getMessage());
@@ -160,7 +177,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
          */ 
         void initializeUI() 
         { 
-            setTitle("Pitch"); 
+            setTitle("Table: " + tableName); 
             setSize(windowWidth, windowHeight); 
             setResizable(false); 
             setDefaultCloseOperation(EXIT_ON_CLOSE); 
@@ -221,7 +238,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         			System.out.println(info.length + " " + info[0]);
         			for (int i = 0; i + 4 < info.length; i += 5)
         			{
-        				String card = info[i] + " " + info[i+1];
+        				Card card = new Card(info[i],  info[i+1], info[i+4]);
         				int x = Integer.parseInt(info[i+2]);
         				int y = Integer.parseInt(info[i+3]);
         				
@@ -232,11 +249,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 
         				Bounds bounds = new Bounds(x, y, x + cardWidth, y + cardHeight);
         				tableCards.add(card);
-        				cardClickBoxes.put(card, bounds);  	
-        				if (info[i+4].equals("1"))
-        				{
-        					visibleCards.add(card);
-        				}
+        				cardClickBoxes.put(card, bounds);
         			}
         		}	
         		while (true) 
@@ -263,7 +276,8 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         			// check cases for input
         			if (response.startsWith("DREW"))
         			{
-        				hand.add(response.substring(5));
+        				String[] info = response.substring(5).split(" ");
+        				hand.add(new Card(info[0], info[1]));
         			}
         			else if (response.startsWith("HAND COUNTS: " ))
         			{
@@ -273,12 +287,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         			{	
         				// info is suit, power, x, y, player number, visible
         				String[] info = response.substring(6).split(" ");
-        				String card = info[0] + " " + info[1];
-        				
-        				if (info[5].equals("1"))
-        				{
-        					visibleCards.add(card);
-        				}
+        				Card card = new Card(info[0], info[1], info[5]);
         				
         				if (Integer.parseInt(info[4]) == playerNum)
         				{
@@ -304,7 +313,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         			{
         				// info is suit, power, x, y, player number
         				String[] info = response.substring(5).split(" ");
-        				String card = info[0] + " " + info[1];
+        				Card card = new Card(info[0], info[1]);
         				
         				// logic for rotating placed cards based on player number
         				int x = Integer.parseInt(info[2]);
@@ -321,32 +330,47 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         			}
         			else if (response.startsWith("FLIP"))
         			{
-        				String card = response.substring(5);
-        				// ensure card is in play
-        				if (hand.contains(card) || tableCards.contains(card))
+        				// info is suit, power, vis
+        				String[] info = response.substring(5).split(" ");
+        				Card cardToFlip = new Card(info[0], info[1], info[2]);
+        				
+        				// check hand and flip
+        				for (Card c : hand)
         				{
-        					if (visibleCards.contains(card))
+        					if (c.equals(cardToFlip))
         					{
-        						visibleCards.remove(card);
-        					}
-        					else
-        					{
-        						visibleCards.add(card);
+        						c.visible = cardToFlip.visible;
         					}
         				}
+        				
+        				// check table and flip
+        				for (Card c : tableCards)
+        				{
+        					if (c.equals(cardToFlip))
+        					{
+        						c.visible = cardToFlip.visible;
+        					}
+        				}			
         			}
         			else if (response.startsWith("PICKUP"))
         			{
-        				// info is suit, power, player who picked up
+        				// info is suit, power, vis, player who picked up
         				String info[] = response.substring(7).split(" ");
-        				String card = info[0] + " " + info[1];
-        				int playerWhoPickedUp = Integer.parseInt(info[2]);
+        				Card card = new Card(info[0], info[1], info[2]);
+        				int playerWhoPickedUp = Integer.parseInt(info[3]);
         				
         				if (playerWhoPickedUp == playerNum)
         				{
         					hand.add(card);
         				}
         				tableCards.remove(card);
+        				cardClickBoxes.remove(card);
+        				
+        				// clear selected card
+        				if (card.equals(selectedCard))
+        				{
+        					selectedCard = null;
+        				}
         			}
         			else if (response.startsWith("DISCARD"))
         			{
@@ -365,14 +389,21 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				}
         				
         				// remove the click box
-        				if (cardClickBoxes.containsKey(card))
+        				cardClickBoxes.remove(card);
+        				
+        				if (card.equals(selectedCard))
         				{
-        					cardClickBoxes.remove(card);
+        					selectedCard = null;
         				}
+        				
         			}
         			else if (response.startsWith("RESET"))
         			{
         				resetState();
+        			}
+        			else if (response.startsWith("CLEAR TABLE"))
+        			{
+        				clearTable();
         			}
         			else
         			{
@@ -384,7 +415,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         	}
         	catch (Exception e)
         	{
-        		String s = "Run Loop Error: ";
+        		String s = "Run Loop Error: " + e.toString() + "\n";
     			for (StackTraceElement element : e.getStackTrace())
     			{
     				s += element.toString() + "\n";
@@ -420,10 +451,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
                 	boolean overlapped = (i != hand.size()-1);
                 	int imgY = windowHeight - cardHeight; 
                 	int imgX = firstX + cardWidth*i/2;
-                	String card = hand.get(i);
+                	Card card = hand.get(i);              	
                 	
-                	
-                	if (visibleCards.contains(card))
+                	if (card.visible)
                 	{
 	                	bbg.drawImage(cardImages.get(card), imgX, imgY, null);	                		
                 	}
@@ -431,7 +461,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
                 	{
 	                	bbg.drawImage(cardBack, imgX, imgY, null);
                 	}
-
                 	
                 	// update click boxes of hand cards
                 	int offset = overlapped ? cardWidth/2 : cardWidth;
@@ -449,9 +478,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             // paint table cards
             for (int i = 0; i < tableCards.size(); i++)
             {
-            	String card = tableCards.get(i);
+            	Card card = tableCards.get(i);
             	Bounds cardB = cardClickBoxes.get(card);
-            	if (visibleCards.contains(card))
+            	if (card.visible)
             	{
             		bbg.drawImage(cardImages.get(card), cardB.topLeftX, cardB.topLeftY, null); 
             	}
@@ -509,25 +538,21 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 		            	}
             		}
             	}
-            }
-            
-            // paint box around selected card
-            if (!selectedCard.isEmpty())
+            }        
+                     
+            // paint box around selected card and ghost card
+            if (selectedCard != null && cardClickBoxes.containsKey(selectedCard))
             {
-                Bounds box = cardClickBoxes.get(selectedCard);              
+            	Bounds box = cardClickBoxes.get(selectedCard);              
                 bbg.setColor(Color.BLACK);
                 bbg.setStroke(new BasicStroke(2));
                 bbg.drawRect(box.topLeftX, box.topLeftY, box.width, box.height);
-            }
-                     
-            // paint ghost card
-            if (!selectedCard.isEmpty())
-            {
+            	
                 float opacity = 0.5f;
                 bbg.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity));	                
                
                 Point ghostCard = getGhostCardPoint();
-                if (visibleCards.contains(selectedCard))
+                if (selectedCard.visible)
             	{
                 	bbg.drawImage(cardImages.get(selectedCard), ghostCard.x, ghostCard.y, null);                		
             	}
@@ -541,14 +566,54 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
                 bbg.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity));
                 
                 // if the player would pick up the card, draw border around hand
-                if (ghostCard.y > handThresholdY)
+                int handWidth = (hand.size() + 1)*cardWidth/2;
+	            int handX = windowWidth/2 - handWidth/2;
+                if (ghostCard.y > handThresholdY && ghostCard.x > handX - cardWidth 
+                		&& ghostCard.x < handX + handWidth)
                 {
                 	bbg.setColor(Color.YELLOW);
  	                bbg.setStroke(new BasicStroke(2));
- 	                int handWidth = (hand.size() + 1)*cardWidth/2;
- 	                int handX = windowWidth/2 - handWidth/2;
  	                bbg.drawRect(handX, windowHeight - cardHeight, handWidth, cardHeight);
                 }
+            }
+            
+            // draw the click and drag box
+            if (leftMouseDown)
+            {
+            	int topLeftX;
+            	int topLeftY;
+            	int width;
+            	int height;
+            	Point current = getMousePoint();
+            	
+            	// find coords for X
+            	if (current.x < initialClick.x)
+            	{
+            		topLeftX = current.x;
+            		width = initialClick.x - current.x;
+            	}
+            	else
+            	{
+            		topLeftX = initialClick.x;
+            		width = current.x - initialClick.x;
+            	}
+            	
+            	// find the coords for y
+            	if (current.y < initialClick.y)
+            	{
+            		topLeftY = current.y;
+            		height = initialClick.y - current.y;
+            	}
+            	else
+            	{
+            		topLeftY = initialClick.y;
+            		height = current.y - initialClick.y;
+            	}
+            	
+            	
+            	bbg.setColor(Color.BLACK);
+	            bbg.setStroke(new BasicStroke(2));
+            	bbg.drawRect(topLeftX, topLeftY, width, height);
             }
             
             g.drawImage(backBuffer, insets.left, insets.top, this); 
@@ -561,12 +626,24 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         {
         	tableCards.clear();
         	hand.clear();
-        	visibleCards.clear();
         	cardClickBoxes.clear();
-        	selectedCard = "";
+        	selectedCard = null;
         	for (int i = 0; i < handCounts.length; i++)
         	{
         		handCounts[i] = "0";
+        	}
+        }
+        
+        /**
+         * Clears the table of cards
+         */
+        public void clearTable()
+        {
+        	tableCards.clear();
+        	cardClickBoxes.clear();
+        	if (tableCards.contains(selectedCard))
+        	{
+        		selectedCard = null;
         	}
         }
         
@@ -580,9 +657,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         		// insertion sort
         		for (int j = 0; j < i; j++)
         		{
-        			if (!pairIsInOrder(hand.get(j), hand.get(i)))
+        			if (!hand.get(j).isBefore(hand.get(i)))
         			{
-        				String value = hand.get(i);
+        				Card value = hand.get(i);
         				hand.remove(i);
         				hand.add(j, value);
         				break;
@@ -592,52 +669,18 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         }
         
         /**
-         * Takes in to cards and compares them
-         * @param c1
-         * @param c2
-         * @return true if they were passed in, in correct order
+         * Flips all Cards in hand face up
          */
-        public boolean pairIsInOrder(String c1, String c2)
+        public void flipHandFaceUp()
         {
-        	HashMap<String, Integer> suitRanking = new HashMap<String, Integer>();
-        	suitRanking.put("clubs", 1);
-        	suitRanking.put("diamonds", 2);
-        	suitRanking.put("spades", 3);
-        	suitRanking.put("hearts", 4);
-        	
-        	// red and black for jokers
-        	suitRanking.put("red", 5);
-        	suitRanking.put("black", 6);
-        	
-        	String[] info1 = c1.split(" ");
-    		String[] info2 = c2.split(" ");
-    		
-        	if (info1.length != 2 || info2.length != 2)
+        	// go through hand and request flip for all non visible cards
+        	for (Card c : hand)
         	{
-        		return false;
-        	}
-        	
-        	String s1 = info1[0];
-        	String s2 = info2[0];
-        	int p1 = Integer.parseInt(info1[1]);
-        	int p2 = Integer.parseInt(info2[1]);
-        	
-        	if (suitRanking.get(s1) < suitRanking.get(s2))
-        	{
-        		return true;
-        	}
-        	else if (suitRanking.get(s1) > suitRanking.get(s2))
-        	{
-        		return false;
-        	}
-        	else // tied suit
-        	{
-        		if (p1 < p2)
+        		if (!c.visible)
         		{
-        			return true; 
+        			out.println("FLIP " + c.suit + " " + c.power);
         		}
-        		return false;
-        	}  	
+        	}
         }
         
         /**
@@ -645,7 +688,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
          */
         public void readInCardImages()
         {
-        	cardImages = new Hashtable<String, Image>();
+        	cardImages = new HashMap<Card, Image>();
         	File resources = new File("Resources" + File.separatorChar + "Cards");
     		for (File f : resources.listFiles())
         	{
@@ -695,20 +738,32 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         			}
         		}
         		
-        		cardImages.put(suit + " " + power, image);
+        		cardImages.put(new Card(suit, power), image);
         	}
         }
 
+        /**
+         * Get the location of the mouse in the frame
+         * @return point of mouse location
+         */
+        public Point getMousePoint()
+        {
+        	Point mouse = MouseInfo.getPointerInfo().getLocation();
+        	Point frame = getLocationOnScreen();
+        	frame.y += getInsets().top;
+        	frame.x += getInsets().left;
+        	return new Point(mouse.x - frame.x, mouse.y - frame.y);
+        }
+        
         /**
          * Gets the location of the upper left of the ghost card
          * @return the point of the upper left of the ghost card
          */
 		public Point getGhostCardPoint()
 		{
-			Point mouse = MouseInfo.getPointerInfo().getLocation();
-            Point frame = getLocationOnScreen();
-            int x = mouse.x - frame.x - cardWidth/2;
-            int y = mouse.y - frame.y - cardHeight/2;
+			Point mouse = getMousePoint();
+            int x = mouse.x - cardWidth/2;
+            int y = mouse.y - cardHeight/2;
             
             // create boundaries for the card so it won't overlap with opponent's hand
             if (y < cardHeight)
@@ -780,7 +835,10 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			// System.out.println("Out Coords: " + newX + " " + newY);
 			return new Point(newX, newY);
 		}
-        
+		
+		/**
+		 * Called when a key is pressed
+		 */
         @Override
 		public void keyPressed(KeyEvent e) {
 			// TODO Auto-generated method stub
@@ -788,6 +846,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			
 		}
 
+        /**
+         * Called when a key is released
+         */
 		@Override
 		public void keyReleased(KeyEvent e) 
 		{
@@ -799,16 +860,16 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			else if (e.getKeyCode() == KeyEvent.VK_T)
 			{
 				// if a card is selected, discard that card
-				if (!selectedCard.isEmpty())
+				if (selectedCard != null)
 				{
-					out.println("DISCARD " + selectedCard);
-					selectedCard = "";
+					out.println("DISCARD " + selectedCard.suit + " " + selectedCard.power);
+					selectedCard = null;
 				}
 			}
 			else if (e.getKeyCode() == KeyEvent.VK_R)
 			{
 				// get confirm for reset
-				int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to reset the game?");
+				int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to shuffle everyting into the deck?");
 				if (confirm == JOptionPane.OK_OPTION)
 				{
 					out.println("RESET");
@@ -818,126 +879,37 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			{
 				orderHand();
 			}
+			else if (e.getKeyCode() == KeyEvent.VK_C)
+			{
+				// get confirm for reset
+				int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to clear the table?");
+				if (confirm == JOptionPane.OK_OPTION)
+				{
+					out.println("CLEAR TABLE");
+				}
+			}
+			else if (e.getKeyCode() == KeyEvent.VK_F)
+			{
+				flipHandFaceUp();
+			}
 			
 		}
 
+		/**
+		 * Called when a key is fully typed
+		 */
 		@Override
 		public void keyTyped(KeyEvent e) {
 				
 		}
 
+		/**
+		 * Called when any of the mouse buttons are fully clicked
+		 */
 		@Override
 		public void mouseClicked(MouseEvent e) 
 		{
-			Point clickPoint = new Point(e.getPoint().x, e.getPoint().y - 26);
 			
-			// if right click and a card is selected, unselect card
-			if (e.getButton() == MouseEvent.BUTTON3 && !selectedCard.isEmpty())
-			{
-				if (!selectedCard.isEmpty())
-				{
-					selectedCard = "";
-					updateGraphics();
-					return;
-				}
-			}
-			// see if a card was clicked
-			String clickedCard = "";
-			for (String s : cardClickBoxes.keySet())
-			{
-				if (cardClickBoxes.get(s).contains(clickPoint))
-				{
-					clickedCard = s;
-					break;
-				}
-			}	
-			
-			// if no card was selected and right mouse was clicked, flip clicked card
-			if (e.getButton() == MouseEvent.BUTTON3 && selectedCard.isEmpty() && !clickedCard.isEmpty())
-			{
-				out.println("FLIP " + clickedCard);
-				System.out.println("Request: FLIP " + clickedCard);
-				return;
-			}
-			
-			// if a card was clicked and no card is selected, select the card
-			if (!clickedCard.isEmpty() && selectedCard.isEmpty())
-			{
-				selectedCard = clickedCard;
-				if (tableCards.contains(selectedCard))
-				{
-					// move the selected card to the end of the list
-					tableCards.remove(selectedCard);
-					tableCards.add(selectedCard);
-				}
-			}
-			// if table space was clicked and a card was selected
-			else if (!selectedCard.isEmpty())
-			{
-				// from hand
-				if (hand.contains(selectedCard))
-				{
-					// place card and set selected card to empty
-					Point playSpot = getGhostCardPoint();
-					
-					String request = "";
-					if (playSpot.y  > handThresholdY)
-					{
-						// if no card was clicked
-						if (clickedCard.isEmpty())
-						{
-							// do nothing
-							selectedCard = "";
-							return;
-						}
-						// if a card in your hand was clicked, then swap
-						else if (hand.contains(clickedCard))
-						{
-							// swap cards in hand
-							int sIndex = hand.indexOf(selectedCard);
-							int cIndex = hand.indexOf(clickedCard);
-							hand.set(sIndex, clickedCard);
-							hand.set(cIndex, selectedCard);
-						}
-					}
-					else
-					{
-						// convert to player 0's view
-						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);						
-						request = "PLACE " + selectedCard + " " + p.x + " " + p.y;
-					}
-					
-					System.out.println("Request: " + request);
-					out.println(request);
-					selectedCard = "";
-				}
-				
-				// from table
-				if (tableCards.contains(selectedCard))
-				{
-					Point playSpot = getGhostCardPoint();
-					
-					
-					// if card placed in hand, pickup instead of move
-					String request;					
-					if (playSpot.y  > handThresholdY)
-					{
-						request = "PICKUP " + selectedCard;
-					}
-					else
-					{
-						// convert to player 0's view
-						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);	
-						request = "MOVE " + selectedCard + " " + p.x + " " + p.y;
-					}
-					
-					System.out.println("Request: " + request);
-					out.println(request);
-					selectedCard = "";
-				}
-			}
-			
-			updateGraphics();
 		}
 
 		@Override
@@ -953,14 +925,138 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 		}
 
 		@Override
-		public void mousePressed(MouseEvent arg0) {
-			// TODO Auto-generated method stub
-			
+		public void mousePressed(MouseEvent e) 
+		{
+			// record mouse down
+			if (e.getButton() == MouseEvent.BUTTON1)
+			{
+				leftMouseDown = true;
+				initialClick = getMousePoint();
+			}
 		}
 
 		@Override
-		public void mouseReleased(MouseEvent arg0) {
-			// TODO Auto-generated method stub
+		public void mouseReleased(MouseEvent e) 
+		{			
+			// say mouse up
+			if (e.getButton() == MouseEvent.BUTTON1)
+			{
+				leftMouseDown = false;
+			}
 			
+			Point clickPoint = new Point(e.getPoint().x, e.getPoint().y - 26);
+			
+			// if right click and a card is selected, unselect card
+			if (e.getButton() == MouseEvent.BUTTON3 && selectedCard != null)
+			{
+				selectedCard = null;
+				updateGraphics();
+				return;
+			}
+			// see if a card was clicked
+			Card clickedCard = null;
+			for (Card s : cardClickBoxes.keySet())
+			{
+				if (cardClickBoxes.get(s).contains(clickPoint))
+				{
+					clickedCard = s;
+					break;
+				}
+			}	
+			
+			// if no card was selected and right mouse was clicked, flip clicked card
+			if (e.getButton() == MouseEvent.BUTTON3 && selectedCard == null && clickedCard != null)
+			{
+				out.println("FLIP " + clickedCard.suit + " " + clickedCard.power);
+				System.out.println("Request: FLIP " + clickedCard.suit + " " + clickedCard.power);
+				return;
+			}
+			
+			// if a card was clicked and no card is selected, select the card
+			if (clickedCard != null && selectedCard == null)
+			{
+				selectedCard = clickedCard;
+				if (tableCards.contains(selectedCard))
+				{
+					// move the selected card to the end of the list
+					tableCards.remove(selectedCard);
+					tableCards.add(selectedCard);
+				}
+			}
+			// if table space was clicked and a card was selected
+			else if (selectedCard != null)
+			{
+				// from hand
+				if (hand.contains(selectedCard))
+				{
+					// place card and set selected card to empty
+					Point playSpot = getGhostCardPoint();
+					
+					String request = "";
+					if (playSpot.y  > handThresholdY)
+					{
+						// if no card was clicked
+						if (clickedCard == null)
+						{
+							// place in front of hand
+							if (playSpot.x < windowWidth/2)
+							{
+								hand.remove(selectedCard);
+								hand.add(0, selectedCard);
+							}
+							else
+							{
+								hand.remove(selectedCard);
+								hand.add(selectedCard);
+							}
+						}
+						// if a card in your hand was clicked, then swap
+						else if (hand.contains(clickedCard))
+						{
+							// swap cards in hand
+							hand.remove(selectedCard);
+							int cIndex = hand.indexOf(clickedCard);
+							hand.add(cIndex+1, selectedCard);
+						}
+					}
+					else
+					{
+						// convert to player 0's view
+						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);						
+						request = "PLACE " + selectedCard.suit + " " + selectedCard.power + " " + p.x + " " + p.y;
+						System.out.println("Request: " + request);
+						out.println(request);
+					}					
+					selectedCard = null;
+				}
+				
+				// from table
+				if (tableCards.contains(selectedCard))
+				{
+					Point playSpot = getGhostCardPoint();
+					
+					
+					// if card placed in hand, pickup instead of move
+					String request;					
+					int handWidth = (hand.size() + 1)*cardWidth/2;
+		            int handX = windowWidth/2 - handWidth/2;
+					if (playSpot.y > handThresholdY && playSpot.x > handX - cardWidth 
+	                		&& playSpot.x < handX + handWidth)
+					{
+						request = "PICKUP " + selectedCard.suit + " " + selectedCard.power;
+					}
+					else
+					{
+						// convert to player 0's view
+						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);	
+						request = "MOVE " + selectedCard.suit + " " + selectedCard.power + " " + p.x + " " + p.y;
+					}
+					
+					System.out.println("Request: " + request);
+					out.println(request);
+					selectedCard = null;
+				}
+			}			
+			updateGraphics();		
 		}
 }

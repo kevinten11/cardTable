@@ -1,4 +1,9 @@
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.HashMap;
 
 public class PitchServer {
 
@@ -7,22 +12,37 @@ public class PitchServer {
 
 		ServerSocket listener = new ServerSocket(8901);
 		System.out.println("Pitch Server is Running");
-		PitchModel model = new PitchModel();
+		HashMap<String, PitchModel> tableMap = new HashMap<String, PitchModel>();
 		try
 		{
-			for (int i = 0; i < 4; i++)
+			while (true)
 			{
-				System.out.println("Call for Plr:" + i);
-				model.addPlayer(listener.accept(), i);
-				model.players.get(i).start();
+				Socket playerSocket = listener.accept();
+				BufferedReader input = new BufferedReader(new InputStreamReader(playerSocket.getInputStream()));
+				PrintWriter output = new PrintWriter(playerSocket.getOutputStream(), true);
+				String tableName = input.readLine();
+				
+				if (tableMap.containsKey(tableName))
+				{
+					output.println("FOUND");
+					tableMap.get(tableName).addPlayer(playerSocket);
+				}
+				else
+				{
+					output.println("NOT FOUND");
+					PitchModel model = new PitchModel();
+					tableMap.put(tableName, model);
+					model.addPlayer(playerSocket);
+				}
 			}				
+		}
+		catch (Exception e)
+		{
+			System.out.println("MAIN");
+			e.printStackTrace();
 		}
 		finally 
 		{
-			while (model.players.size() > 0)
-			{
-				Thread.sleep(1000);
-			}
 			listener.close();
 			System.exit(0);
 		}

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map.Entry;
@@ -13,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PitchModel {
 
 	ConcurrentArrayList<Card> deck;
-	static ConcurrentArrayList<Card> discardPile;
+	ConcurrentArrayList<Card> discardPile;
 	ConcurrentHashMap<Card, Point> tableCards;
 	ConcurrentArrayList<Player> players;
 	HashMap<String, Card> stringToRef;
@@ -35,9 +34,11 @@ public class PitchModel {
 		}
 	}
 
-	public void addPlayer(Socket socket, int number)
+	public void addPlayer(Socket socket)
 	{
-		players.add(new Player(socket, number));
+		int numPlayers = players.size();
+		players.add(new Player(socket, numPlayers));	
+		players.get(numPlayers).start();
 		sendHandCounts();
 	}
 	
@@ -66,7 +67,7 @@ public class PitchModel {
 	 */
 	public void clearTable()
 	{
-		// go through all cards on table and put them in the deck
+		// go through all cards on table and put them in the discardPile
 		for (Entry<Card, Point> e : tableCards.entrySet())
 		{
 			discardPile.add(e.getKey());	
@@ -86,10 +87,14 @@ public class PitchModel {
 		{
 			Card last = from.get(from.size() - 1);
 			from.remove(last);
+			last.visible = false;
 			deck.add(last);
 		}
 	}
 	
+	/**
+	 * Sends out the counts of all players' hands
+	 */
 	public void sendHandCounts()
 	{
 		String countString = "HAND COUNTS: ";
@@ -107,6 +112,10 @@ public class PitchModel {
 		}
 	}
 	
+	/**
+	 * Sends out a command to all players
+	 * @param s String of the command to send
+	 */
 	public void sendOutCommand(String s)
 	{
 		for (int i = 0; i < players.size(); i++)
@@ -115,6 +124,10 @@ public class PitchModel {
 		}
 	}
 	
+	/**
+	 * Initializes the deck with a 54 cards
+	 * @throws InterruptedException
+	 */
 	public void addCardsToDeck() throws InterruptedException
 	{
 		String[] suits = new String[]{"clubs", "diamonds", "hearts", "spades"};
@@ -122,19 +135,24 @@ public class PitchModel {
 		{
 			for (int i = 2; i < 15; i++)
 			{
-				Card card = new Card(i, s);
+				Card card = new Card(s, i);
 				deck.add(card);
 				stringToRef.put(s + " " + i, card);
 			}
 		}
-		Card redJ = new Card(-1, "red");
+		Card redJ = new Card("red", -1);
 		deck.add(redJ);
 		stringToRef.put("red -1", redJ);
-		Card blackJ = new Card(-1, "black");
+		Card blackJ = new Card("black", -1);
 		deck.add(blackJ);
 		stringToRef.put("black -1", blackJ);
 	}
 	
+	/**
+	 * Thread of a player
+	 * @author Kevin
+	 *
+	 */
 	class Player extends Thread 
 	{
 		int number;
@@ -143,6 +161,11 @@ public class PitchModel {
 		PrintWriter output;
 		ConcurrentArrayList<Card> hand;
 		
+		/**
+		 * Creates a player based on the number and socket
+		 * @param socket
+		 * @param number
+		 */
 		public Player(Socket socket, int number)
 		{
 			this.socket = socket;
@@ -174,6 +197,9 @@ public class PitchModel {
 			System.out.println("Hello to Player " + number);
 		}
 		
+		/**
+		 * Main run loop reading in requests from the client
+		 */
 		public void run()
 		{
 			try
@@ -200,7 +226,7 @@ public class PitchModel {
 					}
 					else if (request.startsWith("PLACE "))
 					{
-						// info is suit, power, x, y, visible
+						// info is suit, power, x, y
 						String[] info = request.substring(6).split(" ");
 						Card card = stringToRef.get(info[0] + " " + info[1]);
 						
@@ -241,13 +267,13 @@ public class PitchModel {
 						{
 							// if found in hand send the command to just the player
 							card.visible = !card.visible;
-							output.println(request);
+							output.println(request + " " + (card.visible ? "1" : "0"));
 						}
 						else if (tableCards.containsKey(card))
 						{
 							// if on the field send the command to everyone
 							card.visible = !card.visible;
-							sendOutCommand(request);			
+							sendOutCommand(request + " " + (card.visible ? "1" : "0"));			
 						}
 					}
 					else if (request.startsWith("PICKUP"))
@@ -262,7 +288,7 @@ public class PitchModel {
 						{
 							tableCards.remove(card);
 							hand.add(card);								
-							sendOutCommand(request + " " + number);
+							sendOutCommand(request + " " + (card.visible ? "1" : "0") + " " + number);
 							sendHandCounts();	
 						}
 					}
@@ -291,6 +317,11 @@ public class PitchModel {
 					else if (request.startsWith("RESET"))
 					{
 						resetState();
+					}
+					else if (request.startsWith("CLEAR TABLE"))
+					{
+						clearTable();
+						sendOutCommand(request);
 					}
 					sleep(10);
 				}
