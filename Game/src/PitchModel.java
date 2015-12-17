@@ -259,21 +259,22 @@ public class PitchModel {
 					else if (request.startsWith("FLIP"))
 					{
 						// info is suit power
-						String cardString = request.substring(5);
-						Card card = stringToRef.get(cardString);						
+						String[] info = request.substring(5).split(" ");
+						Card card = stringToRef.get(info[0] + " " + info[1]);		
+						boolean vis = info[2].equals("1");
 						
 						// check hand				
 						if (hand.contains(card))
 						{
 							// if found in hand send the command to just the player
-							card.visible = !card.visible;
-							output.println(request + " " + (card.visible ? "1" : "0"));
+							card.visible = vis;
+							output.println(request);
 						}
 						else if (tableCards.containsKey(card))
 						{
 							// if on the field send the command to everyone
-							card.visible = !card.visible;
-							sendOutCommand(request + " " + (card.visible ? "1" : "0"));			
+							card.visible = vis;
+							sendOutCommand(request);			
 						}
 					}
 					else if (request.startsWith("PICKUP"))

@@ -12,10 +12,14 @@ import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.image.BufferedImage;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -74,10 +78,14 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         int windowWidth = 1200; 
         int windowHeight = 700;
         int handThresholdY;
-        static int PORT = 8901;
+        
+        static int PORT = 36636;
         Socket socket;
         BufferedReader in;
         PrintWriter out;
+        ObjectInputStream objectIn;
+        ObjectOutputStream objectOut;
+        
         int playerNum;
         HashMap<Card, Image> cardImages;
         
@@ -130,8 +138,15 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					// success, remove loading window and show success
 					loadingDialog.dispose();
 					tableName = JOptionPane.showInputDialog("Name of table to create or join:");
+					
+					// string io
 					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 		        	out = new PrintWriter(socket.getOutputStream(), true);
+
+		        	// object io
+					// objectIn = new ObjectInputStream(new BufferedInputStream(socket.getInputStream()));
+					// objectOut = new ObjectOutputStream(new BufferedOutputStream(socket.getOutputStream()));
+					
 		        	out.println(tableName);
 		        	String reply = in.readLine();
 		        	if (reply.equals("FOUND"))
@@ -261,157 +276,159 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				Thread.sleep(50);
         				continue;
         			}
-        			
-        			// check for input from server
-        			response = in.readLine();
-        			
-        			// if null, sleep for a bit
-        			if (response == null)
-        			{
-        				Thread.sleep(50);
-        				continue;
-        			}
-        			
-        			System.out.println(response);
-        			// check cases for input
-        			if (response.startsWith("DREW"))
-        			{
-        				String[] info = response.substring(5).split(" ");
-        				hand.add(new Card(info[0], info[1]));
-        			}
-        			else if (response.startsWith("HAND COUNTS: " ))
-        			{
-        				handCounts = response.substring(13).split(" ");
-        			}
-        			else if (response.startsWith("PLACE"))
-        			{	
-        				// info is suit, power, x, y, player number, visible
-        				String[] info = response.substring(6).split(" ");
-        				Card card = new Card(info[0], info[1], info[5]);
-        				
-        				if (Integer.parseInt(info[4]) == playerNum)
-        				{
-        					hand.remove(card);
-        				}
-        				
-        				tableCards.add(card);
-        				
-        				// logic for rotating placed cards)	
-        				int x = Integer.parseInt(info[2]);
-        				int y = Integer.parseInt(info[3]);
-        				
-        				// translate point
-        				Point newPoint = fitToPerspective(x,y,0, playerNum);
-        				
-        				x = newPoint.x;
-        				y = newPoint.y;
-        				
-        				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
-        				cardClickBoxes.put(card, bound);
-        			}
-        			else if (response.startsWith("MOVE"))
-        			{
-        				// info is suit, power, x, y, player number
-        				String[] info = response.substring(5).split(" ");
-        				Card card = new Card(info[0], info[1]);
-        				
-        				// logic for rotating placed cards based on player number
-        				int x = Integer.parseInt(info[2]);
-        				int y = Integer.parseInt(info[3]);
-        				
-        				// translate point
-        				Point newPoint = fitToPerspective(x,y,0, playerNum);
-        				
-        				x = newPoint.x;
-        				y = newPoint.y;
-        				
-        				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
-        				cardClickBoxes.replace(card, bound);
-        			}
-        			else if (response.startsWith("FLIP"))
-        			{
-        				// info is suit, power, vis
-        				String[] info = response.substring(5).split(" ");
-        				Card cardToFlip = new Card(info[0], info[1], info[2]);
-        				
-        				// check hand and flip
-        				for (Card c : hand)
-        				{
-        					if (c.equals(cardToFlip))
-        					{
-        						c.visible = cardToFlip.visible;
-        					}
-        				}
-        				
-        				// check table and flip
-        				for (Card c : tableCards)
-        				{
-        					if (c.equals(cardToFlip))
-        					{
-        						c.visible = cardToFlip.visible;
-        					}
-        				}			
-        			}
-        			else if (response.startsWith("PICKUP"))
-        			{
-        				// info is suit, power, vis, player who picked up
-        				String info[] = response.substring(7).split(" ");
-        				Card card = new Card(info[0], info[1], info[2]);
-        				int playerWhoPickedUp = Integer.parseInt(info[3]);
-        				
-        				if (playerWhoPickedUp == playerNum)
-        				{
-        					hand.add(card);
-        				}
-        				tableCards.remove(card);
-        				cardClickBoxes.remove(card);
-        				
-        				// clear selected card
-        				if (card.equals(selectedCard))
-        				{
-        					selectedCard = null;
-        				}
-        			}
-        			else if (response.startsWith("DISCARD"))
-        			{
-        				// info is suit, power
-        				String info[] = response.substring(8).split(" ");
-        				String card = info[0] + " " + info[1];
-        				
-        				// remove from hand or table
-        				if (tableCards.contains(card))
-        				{
-        					tableCards.remove(card);
-        				}
-        				else if (hand.contains(card))
-        				{
-        					hand.remove(card);
-        				}
-        				
-        				// remove the click box
-        				cardClickBoxes.remove(card);
-        				
-        				if (card.equals(selectedCard))
-        				{
-        					selectedCard = null;
-        				}
-        				
-        			}
-        			else if (response.startsWith("RESET"))
-        			{
-        				resetState();
-        			}
-        			else if (response.startsWith("CLEAR TABLE"))
-        			{
-        				clearTable();
-        			}
         			else
         			{
-        				// if we get an unintended sever call, just sleep a bit
-        				Thread.sleep(50);
-        			}
-        			updateGraphics();
-        		}    		
+        				// check for input from server
+            			response = in.readLine();
+            			
+            			// if null, sleep for a bit
+            			if (response == null)
+            			{
+            				Thread.sleep(50);
+            				continue;
+            			}
+            			
+            			System.out.println(response);
+            			// check cases for input
+            			if (response.startsWith("DREW"))
+            			{
+            				String[] info = response.substring(5).split(" ");
+            				hand.add(new Card(info[0], info[1]));
+            			}
+            			else if (response.startsWith("HAND COUNTS: " ))
+            			{
+            				handCounts = response.substring(13).split(" ");
+            			}
+            			else if (response.startsWith("PLACE"))
+            			{	
+            				// info is suit, power, x, y, player number, visible
+            				String[] info = response.substring(6).split(" ");
+            				Card card = new Card(info[0], info[1], info[5]);
+            				
+            				if (Integer.parseInt(info[4]) == playerNum)
+            				{
+            					hand.remove(card);
+            				}
+            				
+            				tableCards.add(card);
+            				
+            				// logic for rotating placed cards)	
+            				int x = Integer.parseInt(info[2]);
+            				int y = Integer.parseInt(info[3]);
+            				
+            				// translate point
+            				Point newPoint = fitToPerspective(x,y,0, playerNum);
+            				
+            				x = newPoint.x;
+            				y = newPoint.y;
+            				
+            				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
+            				cardClickBoxes.put(card, bound);
+            			}
+            			else if (response.startsWith("MOVE"))
+            			{
+            				// info is suit, power, x, y, player number
+            				String[] info = response.substring(5).split(" ");
+            				Card card = new Card(info[0], info[1]);
+            				
+            				// logic for rotating placed cards based on player number
+            				int x = Integer.parseInt(info[2]);
+            				int y = Integer.parseInt(info[3]);
+            				
+            				// translate point
+            				Point newPoint = fitToPerspective(x,y,0, playerNum);
+            				
+            				x = newPoint.x;
+            				y = newPoint.y;
+            				
+            				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
+            				cardClickBoxes.replace(card, bound);
+            			}
+            			else if (response.startsWith("FLIP"))
+            			{
+            				// info is suit, power, vis
+            				String[] info = response.substring(5).split(" ");
+            				Card cardToFlip = new Card(info[0], info[1], info[2]);
+            				
+            				// check hand and flip
+            				for (Card c : hand)
+            				{
+            					if (c.equals(cardToFlip))
+            					{
+            						c.visible = cardToFlip.visible;
+            					}
+            				}
+            				
+            				// check table and flip
+            				for (Card c : tableCards)
+            				{
+            					if (c.equals(cardToFlip))
+            					{
+            						c.visible = cardToFlip.visible;
+            					}
+            				}			
+            			}
+            			else if (response.startsWith("PICKUP"))
+            			{
+            				// info is suit, power, vis, player who picked up
+            				String info[] = response.substring(7).split(" ");
+            				Card card = new Card(info[0], info[1], info[2]);
+            				int playerWhoPickedUp = Integer.parseInt(info[3]);
+            				
+            				if (playerWhoPickedUp == playerNum)
+            				{
+            					hand.add(card);
+            				}
+            				tableCards.remove(card);
+            				cardClickBoxes.remove(card);
+            				
+            				// clear selected card
+            				if (card.equals(selectedCard))
+            				{
+            					selectedCard = null;
+            				}
+            			}
+            			else if (response.startsWith("DISCARD"))
+            			{
+            				// info is suit, power
+            				String info[] = response.substring(8).split(" ");
+            				String card = info[0] + " " + info[1];
+            				
+            				// remove from hand or table
+            				if (tableCards.contains(card))
+            				{
+            					tableCards.remove(card);
+            				}
+            				else if (hand.contains(card))
+            				{
+            					hand.remove(card);
+            				}
+            				
+            				// remove the click box
+            				cardClickBoxes.remove(card);
+            				
+            				if (card.equals(selectedCard))
+            				{
+            					selectedCard = null;
+            				}
+            				
+            			}
+            			else if (response.startsWith("RESET"))
+            			{
+            				resetState();
+            			}
+            			else if (response.startsWith("CLEAR TABLE"))
+            			{
+            				clearTable();
+            			}
+            			else
+            			{
+            				// if we get an unintended sever call, just sleep a bit
+            				Thread.sleep(50);
+            			}
+            			updateGraphics();
+            		}
+        		}
         	}
         	catch (Exception e)
         	{
@@ -967,8 +984,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			// if no card was selected and right mouse was clicked, flip clicked card
 			if (e.getButton() == MouseEvent.BUTTON3 && selectedCard == null && clickedCard != null)
 			{
-				out.println("FLIP " + clickedCard.suit + " " + clickedCard.power);
-				System.out.println("Request: FLIP " + clickedCard.suit + " " + clickedCard.power);
+				String command = "FLIP " + clickedCard.suit + " " + clickedCard.power + " " + (clickedCard.visible ? "0" : "1");
+				out.println(command);
+				System.out.println(command);
 				return;
 			}
 			

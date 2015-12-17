@@ -1,5 +1,7 @@
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -10,13 +12,13 @@ public class PitchServer {
 	public static void main(String[] args) throws Exception{
 		// TODO Auto-generated method stub
 
-		ServerSocket listener = new ServerSocket(8901);
+		ServerSocket listener = new ServerSocket(36636);
 		System.out.println("Pitch Server is Running");
 		HashMap<String, PitchModel> tableMap = new HashMap<String, PitchModel>();
 		try
 		{
 			while (true)
-			{
+			{			
 				Socket playerSocket = listener.accept();
 				BufferedReader input = new BufferedReader(new InputStreamReader(playerSocket.getInputStream()));
 				PrintWriter output = new PrintWriter(playerSocket.getOutputStream(), true);
@@ -24,11 +26,13 @@ public class PitchServer {
 				
 				if (tableMap.containsKey(tableName))
 				{
+					System.out.println("Found table");
 					output.println("FOUND");
 					tableMap.get(tableName).addPlayer(playerSocket);
 				}
 				else
 				{
+					System.out.println("Creating table: " + tableName);
 					output.println("NOT FOUND");
 					PitchModel model = new PitchModel();
 					tableMap.put(tableName, model);
@@ -41,11 +45,8 @@ public class PitchServer {
 			System.out.println("MAIN");
 			e.printStackTrace();
 		}
-		finally 
-		{
-			listener.close();
-			System.exit(0);
-		}
+		listener.close();
+		System.exit(0);
 	}
 
 }
