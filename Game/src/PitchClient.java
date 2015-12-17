@@ -986,7 +986,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			{
 				String command = "FLIP " + clickedCard.suit + " " + clickedCard.power + " " + (clickedCard.visible ? "0" : "1");
 				out.println(command);
-				System.out.println(command);
+				System.out.println("Request: " + command);
 				return;
 			}
 			

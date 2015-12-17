@@ -258,7 +258,7 @@ public class PitchModel {
 					}
 					else if (request.startsWith("FLIP"))
 					{
-						// info is suit power
+						// info is suit power vis
 						String[] info = request.substring(5).split(" ");
 						Card card = stringToRef.get(info[0] + " " + info[1]);		
 						boolean vis = info[2].equals("1");

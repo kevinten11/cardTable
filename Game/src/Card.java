@@ -21,7 +21,7 @@ public class Card {
 	public Card(String suit, String num, String vis)
 	{
 		this(suit, num);
-		visible = (vis.equals("0") ? false : true);
+		visible = vis.equals("1");
 	}
 	
 	@Override
