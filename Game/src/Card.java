@@ -70,31 +70,32 @@ public class Card {
      */
     public boolean isBefore(Card c2)
     {
-    	HashMap<String, Integer> suitRanking = new HashMap<String, Integer>();
-    	suitRanking.put("clubs", 1);
-    	suitRanking.put("diamonds", 2);
-    	suitRanking.put("spades", 3);
-    	suitRanking.put("hearts", 4);
-    	
-    	// red and black for jokers
-    	suitRanking.put("red", 5);
-    	suitRanking.put("black", 6);
-    	
-    	if (suitRanking.get(suit) < suitRanking.get(c2.suit))
-    	{
-    		return true;
-    	}
-    	else if (suitRanking.get(suit) > suitRanking.get(c2.suit))
-    	{
-    		return false;
-    	}
-    	else // tied suit
-    	{
-    		if (power < c2.power)
-    		{
-    			return true; 
-    		}
-    		return false;
-    	}  	
+    	return SuitRankings.isBefore( this, c2 );
+//    	HashMap<String, Integer> suitRanking = new HashMap<String, Integer>();
+//    	suitRanking.put("clubs", 1);
+//    	suitRanking.put("diamonds", 2);
+//    	suitRanking.put("spades", 3);
+//    	suitRanking.put("hearts", 4);
+//    	
+//    	// red and black for jokers
+//    	suitRanking.put("red", 5);
+//    	suitRanking.put("black", 6);
+//    	
+//    	if (suitRanking.get(suit) < suitRanking.get(c2.suit))
+//    	{
+//    		return true;
+//    	}
+//    	else if (suitRanking.get(suit) > suitRanking.get(c2.suit))
+//    	{
+//    		return false;
+//    	}
+//    	else // tied suit
+//    	{
+//    		if (power < c2.power)
+//    		{
+//    			return true; 
+//    		}
+//    		return false;
+//    	}  	
     }
 }
