@@ -330,6 +330,7 @@ public class PitchModel {
 			catch (Exception e)
 			{
 				players.remove(this);
+				e.printStackTrace();
 				System.out.println("Player dropped: " + e);
 			}
 		}

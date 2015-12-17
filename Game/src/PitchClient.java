@@ -392,7 +392,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             			{
             				// info is suit, power
             				String info[] = response.substring(8).split(" ");
-            				String card = info[0] + " " + info[1];
+            				Card card = new Card(info[0], info[1]);
             				
             				// remove from hand or table
             				if (tableCards.contains(card))
@@ -695,7 +695,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         	{
         		if (!c.visible)
         		{
-        			out.println("FLIP " + c.suit + " " + c.power);
+        			out.println("FLIP " + c.suit + " " + c.power + " 1");
         		}
         	}
         }
