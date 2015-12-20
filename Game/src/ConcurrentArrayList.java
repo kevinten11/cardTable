@@ -59,6 +59,19 @@ public class ConcurrentArrayList<T> {
     	}
     }
     
+    public void clear()
+    {
+    	writeLock.lock();
+    	try
+    	{
+    		list.clear();
+    	}
+    	finally
+    	{
+    		writeLock.unlock();
+    	}
+    }
+    
     public boolean contains(T e)
     {
     	readLock.lock();
@@ -84,6 +97,29 @@ public class ConcurrentArrayList<T> {
             readLock.unlock();
         }
     }
+	
+	public T tryGet (T e)
+	{
+		readLock.lock();
+		try
+		{
+			// look to see if it contains the element
+			if (list.contains(e))
+			{
+				int index = list.indexOf(e);
+				return list.get(index);
+			}
+			else 
+			{
+				// return null if list doesn't contain element
+				return null;
+			}
+		}
+		finally
+		{
+			readLock.unlock();
+		}
+	}
 	
 	public int size()
 	{

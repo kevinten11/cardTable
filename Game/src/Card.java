@@ -1,10 +1,13 @@
-import java.util.HashMap;
+import java.awt.Point;
 
 public class Card {
 	
 	public int power;
 	public String suit;
 	public boolean visible;
+	
+	// the location on the table
+	public Point location;
 	
 	public Card(String suit, int num)
 	{
@@ -22,6 +25,13 @@ public class Card {
 	{
 		this(suit, num);
 		visible = vis.equals("1");
+	}
+	
+	public Card(String suit, int num, boolean vis, Point location)
+	{
+		this(suit, num);
+		this.visible = vis;
+		this.location = location;
 	}
 	
 	@Override
@@ -71,31 +81,5 @@ public class Card {
     public boolean isBefore(Card c2)
     {
     	return SuitRankings.isBefore( this, c2 );
-//    	HashMap<String, Integer> suitRanking = new HashMap<String, Integer>();
-//    	suitRanking.put("clubs", 1);
-//    	suitRanking.put("diamonds", 2);
-//    	suitRanking.put("spades", 3);
-//    	suitRanking.put("hearts", 4);
-//    	
-//    	// red and black for jokers
-//    	suitRanking.put("red", 5);
-//    	suitRanking.put("black", 6);
-//    	
-//    	if (suitRanking.get(suit) < suitRanking.get(c2.suit))
-//    	{
-//    		return true;
-//    	}
-//    	else if (suitRanking.get(suit) > suitRanking.get(c2.suit))
-//    	{
-//    		return false;
-//    	}
-//    	else // tied suit
-//    	{
-//    		if (power < c2.power)
-//    		{
-//    			return true; 
-//    		}
-//    		return false;
-//    	}  	
     }
 }

@@ -4,16 +4,13 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.Map.Entry;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class PitchModel {
 
 	ConcurrentArrayList<Card> deck;
 	ConcurrentArrayList<Card> discardPile;
-	ConcurrentHashMap<Card, Point> tableCards;
+	ConcurrentArrayList<Card> tableCards;
 	ConcurrentArrayList<Player> players;
 	HashMap<String, Card> stringToRef;
 	
@@ -23,7 +20,7 @@ public class PitchModel {
 		deck = new ConcurrentArrayList<Card>();
 		discardPile = new ConcurrentArrayList<Card>();
 		players = new ConcurrentArrayList<Player>();
-		tableCards = new ConcurrentHashMap<Card, Point>();
+		tableCards = new ConcurrentArrayList<Card>();
 		stringToRef = new HashMap<String, Card>();
 		try {
 			addCardsToDeck();
@@ -68,9 +65,9 @@ public class PitchModel {
 	public void clearTable()
 	{
 		// go through all cards on table and put them in the discardPile
-		for (Entry<Card, Point> e : tableCards.entrySet())
+		for (int i = 0; i < tableCards.size(); i++)
 		{
-			discardPile.add(e.getKey());	
+			discardPile.add(tableCards.get(i));	
 		}
 		
 		// clear the table list
@@ -184,11 +181,10 @@ public class PitchModel {
 			
 			// send out table state
 			String tableString = "TABLE:";
-			Enumeration<Card> cardEnum = tableCards.keys();
-			while (cardEnum.hasMoreElements())
+			for (int i = 0; i < tableCards.size(); i++)
 			{
-				Card card = cardEnum.nextElement();
-				Point point = tableCards.get(card);
+				Card card = tableCards.get(i);
+				Point point = card.location;
 				tableString += " " + card.suit + " " + card.power + " " + point.x + " " + point.y + " " + (card.visible ? "1" : "0");
 			}
 			output.println(tableString);
@@ -226,17 +222,18 @@ public class PitchModel {
 					}
 					else if (request.startsWith("PLACE "))
 					{
-						// info is suit, power, x, y
+						// info is suit, power, x, y, vis
 						String[] info = request.substring(6).split(" ");
 						Card card = stringToRef.get(info[0] + " " + info[1]);
-						
+						card.visible = info[4].equals("1");
 						// if valid card, then place it
 						if (hand.contains(card))
 						{
 							hand.remove(card);
 							Point cardPoint = new Point(Integer.parseInt(info[2]), Integer.parseInt(info[3]));
-							tableCards.put(card, cardPoint);
-							sendOutCommand(request + " " + number + " " +  (card.visible ? "1" : "0"));
+							card.location = cardPoint;
+							tableCards.add(card);
+							sendOutCommand(request + " " + number);
 							sendHandCounts();
 						}
 								
@@ -248,11 +245,11 @@ public class PitchModel {
 						Card card = stringToRef.get(info[0] + " " + info[1]);
 						
 						// if card is a valid table card, move it
-						if (tableCards.containsKey(card))
+						Card foundCard = tableCards.tryGet(card);
+						if (foundCard != null)
 						{
 							Point cardPoint = new Point(Integer.parseInt(info[2]), Integer.parseInt(info[3]));
-							Point oldPoint = tableCards.get(card);
-							tableCards.replace(card, oldPoint, cardPoint);
+							foundCard.location = cardPoint;
 							sendOutCommand(request + " " + number);
 						}
 					}
@@ -270,7 +267,7 @@ public class PitchModel {
 							card.visible = vis;
 							output.println(request);
 						}
-						else if (tableCards.containsKey(card))
+						else if (tableCards.contains(card))
 						{
 							// if on the field send the command to everyone
 							card.visible = vis;
@@ -285,7 +282,7 @@ public class PitchModel {
 						Card card = stringToRef.get(cardString);
 						
 						// if found, process and send out request
-						if (tableCards.containsKey(card))
+						if (tableCards.contains(card))
 						{
 							tableCards.remove(card);
 							hand.add(card);								
@@ -308,7 +305,7 @@ public class PitchModel {
 							sendHandCounts();
 						}
 						// if card is on table, send out to all players
-						else if (tableCards.containsKey(card))
+						else if (tableCards.contains(card))
 						{
 							tableCards.remove(card);
 							discardPile.add(card);

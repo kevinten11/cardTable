@@ -12,8 +12,6 @@ import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.image.BufferedImage;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -75,8 +73,8 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         // cardHeight = 726/5; this is the image height
         int cardHeight = 500/7;
         int fps = 30; 
-        int windowWidth = 1200; 
-        int windowHeight = 700;
+        int tableWidth = 700; 
+        int tableHeight = 700;
         int handThresholdY;
         
         static int PORT = 36636;
@@ -88,8 +86,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         
         int playerNum;
         HashMap<Card, Image> cardImages;
-        
-        HashMap<Card, Bounds> cardClickBoxes = new HashMap<Card, Bounds>();
           
         BufferedImage backBuffer; 
         Insets insets; 
@@ -142,10 +138,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					// string io
 					in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 		        	out = new PrintWriter(socket.getOutputStream(), true);
-
-		        	// object io
-					// objectIn = new ObjectInputStream(new BufferedInputStream(socket.getInputStream()));
-					// objectOut = new ObjectOutputStream(new BufferedOutputStream(socket.getOutputStream()));
 					
 		        	out.println(tableName);
 		        	String reply = in.readLine();
@@ -193,21 +185,21 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         void initializeUI() 
         { 
             setTitle("Table: " + tableName); 
-            setSize(windowWidth, windowHeight); 
+            setSize(tableWidth, tableHeight); 
             setResizable(false); 
             setDefaultCloseOperation(EXIT_ON_CLOSE); 
             setVisible(true); 
             
             insets = getInsets(); 
-            setSize(insets.left + windowWidth + insets.right, 
-                            insets.top + windowHeight + insets.bottom); 
-            handThresholdY = windowHeight - cardWidth - getInsets().top;
+            setSize(insets.left + tableWidth + insets.right, 
+                            insets.top + tableHeight + insets.bottom); 
+            handThresholdY = tableHeight - cardWidth - getInsets().top;
             
-            backBuffer = new BufferedImage(windowWidth, windowHeight, BufferedImage.TYPE_INT_ARGB); 
+            backBuffer = new BufferedImage(tableWidth, tableHeight, BufferedImage.TYPE_INT_ARGB); 
             try {
             	// read in background
     		    background = ImageIO.read(new File("Resources" + File.separatorChar + "Background-Green.jpg"));
-    		    background = background.getScaledInstance(windowWidth, windowHeight, Image.SCALE_SMOOTH);
+    		    background = background.getScaledInstance(tableWidth, tableHeight, Image.SCALE_SMOOTH);
     		    
     		    // read in card back
     		    cardBack = ImageIO.read(new File("Resources" + File.separatorChar + "playing-card-back.jpg"));
@@ -257,14 +249,8 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				int x = Integer.parseInt(info[i+2]);
         				int y = Integer.parseInt(info[i+3]);
         				
-        				// info is from player 0 perspective so alter it
-        				Point transLocation = fitToPerspective(x, y, 0, playerNum);
-        				x = transLocation.x;
-        				y = transLocation.y;
-
-        				Bounds bounds = new Bounds(x, y, x + cardWidth, y + cardHeight);
         				tableCards.add(card);
-        				cardClickBoxes.put(card, bounds);
+        				card.location = new Point(x,y);
         			}
         		}	
         		while (true) 
@@ -301,29 +287,20 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             			}
             			else if (response.startsWith("PLACE"))
             			{	
-            				// info is suit, power, x, y, player number, visible
+            				// info is suit, power, x, y, visible, player num
             				String[] info = response.substring(6).split(" ");
-            				Card card = new Card(info[0], info[1], info[5]);
+            				Card card = new Card(info[0], info[1], info[4]);
             				
-            				if (Integer.parseInt(info[4]) == playerNum)
+            				if (Integer.parseInt(info[5]) == playerNum)
             				{
             					hand.remove(card);
             				}
             				
             				tableCards.add(card);
             				
-            				// logic for rotating placed cards)	
             				int x = Integer.parseInt(info[2]);
-            				int y = Integer.parseInt(info[3]);
-            				
-            				// translate point
-            				Point newPoint = fitToPerspective(x,y,0, playerNum);
-            				
-            				x = newPoint.x;
-            				y = newPoint.y;
-            				
-            				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
-            				cardClickBoxes.put(card, bound);
+            				int y = Integer.parseInt(info[3]);   
+            				card.location = new Point(x, y);
             			}
             			else if (response.startsWith("MOVE"))
             			{
@@ -335,14 +312,8 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             				int x = Integer.parseInt(info[2]);
             				int y = Integer.parseInt(info[3]);
             				
-            				// translate point
-            				Point newPoint = fitToPerspective(x,y,0, playerNum);
-            				
-            				x = newPoint.x;
-            				y = newPoint.y;
-            				
-            				Bounds bound = new Bounds(x, y, x + cardWidth, y + cardHeight);
-            				cardClickBoxes.replace(card, bound);
+            				tableCards.get(tableCards.indexOf(card)).location = new Point(x, y);
+            				card.location = new Point(x, y);
             			}
             			else if (response.startsWith("FLIP"))
             			{
@@ -380,7 +351,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             					hand.add(card);
             				}
             				tableCards.remove(card);
-            				cardClickBoxes.remove(card);
             				
             				// clear selected card
             				if (card.equals(selectedCard))
@@ -403,9 +373,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             				{
             					hand.remove(card);
             				}
-            				
-            				// remove the click box
-            				cardClickBoxes.remove(card);
             				
             				if (card.equals(selectedCard))
             				{
@@ -461,12 +428,11 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             if (!hand.isEmpty())
             {
             	int totalW = (cardWidth * (hand.size()+1))/2;
-            	int firstX = windowWidth/2 - totalW/2;
+            	int firstX = tableWidth/2 - totalW/2;
                 for (int i = 0; i < hand.size(); i++)
                 {
                 	// draw the cards in hand
-                	boolean overlapped = (i != hand.size()-1);
-                	int imgY = windowHeight - cardHeight; 
+                	int imgY = tableHeight - cardHeight; 
                 	int imgX = firstX + cardWidth*i/2;
                 	Card card = hand.get(i);              	
                 	
@@ -480,15 +446,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
                 	}
                 	
                 	// update click boxes of hand cards
-                	int offset = overlapped ? cardWidth/2 : cardWidth;
-                	if (cardClickBoxes.containsKey(card))
-                	{
-                		cardClickBoxes.replace(card, new Bounds(imgX, imgY, imgX + offset, windowHeight));
-                	}
-                	else
-                	{ 
-                		cardClickBoxes.put(card, new Bounds(imgX, imgY, imgX + offset, windowHeight));
-                	}
+                	card.location = new Point(imgX, imgY);
                 }
             }
                 
@@ -496,14 +454,14 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             for (int i = 0; i < tableCards.size(); i++)
             {
             	Card card = tableCards.get(i);
-            	Bounds cardB = cardClickBoxes.get(card);
+            	Point drawLocation = fitToPerspective(card.location.x, card.location.y, 0, playerNum);
             	if (card.visible)
             	{
-            		bbg.drawImage(cardImages.get(card), cardB.topLeftX, cardB.topLeftY, null); 
+            		bbg.drawImage(cardImages.get(card), drawLocation.x, drawLocation.y, null); 
             	}
             	else
             	{
-            		bbg.drawImage(cardBack, cardB.topLeftX, cardB.topLeftY, null); 
+            		bbg.drawImage(cardBack, drawLocation.x, drawLocation.y, null); 
             	}
             	            	
             }
@@ -532,7 +490,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             		
             		if (offset == 1) // left player
             		{
-            			int firstY = windowHeight/2 - totalW/2;
+            			int firstY = tableHeight/2 - totalW/2;
             			for (int i = 0; i < oppHandCount; i++)
 		            	{
 		            		bbg.drawImage(cardBack, 0, firstY + cardHeight*i/2, null);
@@ -540,7 +498,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             		}
             		else if (offset == 2) // across player
             		{
-		            	int firstX = windowWidth/2 - totalW/2;
+		            	int firstX = tableWidth/2 - totalW/2;
 		            	for (int i = 0; i < oppHandCount; i++)
 		            	{
 		            		bbg.drawImage(cardBack, firstX + cardWidth*i/2, 0, null);
@@ -548,19 +506,19 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             		}
             		else if (offset == 3) // right player
             		{
-            			int firstY = windowHeight/2 - totalW/2;
+            			int firstY = tableHeight/2 - totalW/2;
             			for (int i = 0; i < oppHandCount; i++)
 		            	{
-		            		bbg.drawImage(cardBack, windowWidth-cardHeight, firstY + cardHeight*i/2, null);
+		            		bbg.drawImage(cardBack, tableWidth-cardHeight, firstY + cardHeight*i/2, null);
 		            	}
             		}
             	}
             }        
                      
             // paint box around selected card and ghost card
-            if (selectedCard != null && cardClickBoxes.containsKey(selectedCard))
+            if (selectedCard != null && selectedCard.location != null)
             {
-            	Bounds box = cardClickBoxes.get(selectedCard);              
+            	Bounds box = getScreenBounds(selectedCard);      
                 bbg.setColor(Color.BLACK);
                 bbg.setStroke(new BasicStroke(2));
                 bbg.drawRect(box.topLeftX, box.topLeftY, box.width, box.height);
@@ -584,13 +542,13 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
                 
                 // if the player would pick up the card, draw border around hand
                 int handWidth = (hand.size() + 1)*cardWidth/2;
-	            int handX = windowWidth/2 - handWidth/2;
+	            int handX = tableWidth/2 - handWidth/2;
                 if (ghostCard.y > handThresholdY && ghostCard.x > handX - cardWidth 
                 		&& ghostCard.x < handX + handWidth)
                 {
                 	bbg.setColor(Color.YELLOW);
  	                bbg.setStroke(new BasicStroke(2));
- 	                bbg.drawRect(handX, windowHeight - cardHeight, handWidth, cardHeight);
+ 	                bbg.drawRect(handX, tableHeight - cardHeight, handWidth, cardHeight);
                 }
             }
             
@@ -643,7 +601,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         {
         	tableCards.clear();
         	hand.clear();
-        	cardClickBoxes.clear();
         	selectedCard = null;
         	for (int i = 0; i < handCounts.length; i++)
         	{
@@ -657,7 +614,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         public void clearTable()
         {
         	tableCards.clear();
-        	cardClickBoxes.clear();
         	if (tableCards.contains(selectedCard))
         	{
         		selectedCard = null;
@@ -791,9 +747,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             {
             	x = cardWidth;
             }
-            if (x > windowWidth - 2 * cardWidth)
+            if (x > tableWidth - 2 * cardWidth)
             {
-            	x = windowWidth - 2 * cardWidth;
+            	x = tableWidth - 2 * cardWidth;
             }
             return new Point(x, y);
 		}
@@ -808,8 +764,8 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 		 */
 		public Point fitToPerspective(int x, int y, int fromPlayer, int toPlayer)
 		{
-			int tempHeight = windowHeight - 2*cardHeight;
-			int tempWidth = windowWidth - 2*cardWidth;
+			int tempHeight = tableHeight - 2*cardHeight;
+			int tempWidth = tableWidth - 2*cardWidth;
 			
 			int offset = (fromPlayer - toPlayer);
 			if (offset < 0)
@@ -851,6 +807,19 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			
 			// System.out.println("Out Coords: " + newX + " " + newY);
 			return new Point(newX, newY);
+		}
+		
+		/**
+		 * Gets the bounds for a card based on it's location
+		 * @param c card to check
+		 * @return Bounds for click box
+		 */
+		public Bounds getScreenBounds(Card c)
+		{
+			Point loc = fitToPerspective(c.location.x, c.location.y, 0, playerNum);
+			int x = loc.x;
+			int y = loc.y;
+			return new Bounds(x, y, x + cardWidth, y + cardHeight);
 		}
 		
 		/**
@@ -972,14 +941,24 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 			}
 			// see if a card was clicked
 			Card clickedCard = null;
-			for (Card s : cardClickBoxes.keySet())
+			for (Card c : tableCards)
 			{
-				if (cardClickBoxes.get(s).contains(clickPoint))
+				if (getScreenBounds(c).contains(clickPoint))
 				{
-					clickedCard = s;
+					clickedCard = c;
 					break;
-				}
-			}	
+				}	
+			}
+			
+			for (int i = hand.size() - 1; i > -1; i--)
+			{
+				Card c = hand.get(i);
+				if (getScreenBounds(c).contains(clickPoint))
+				{
+					clickedCard = c;
+					break;
+				}	
+			}
 			
 			// if no card was selected and right mouse was clicked, flip clicked card
 			if (e.getButton() == MouseEvent.BUTTON3 && selectedCard == null && clickedCard != null)
@@ -1017,7 +996,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 						if (clickedCard == null)
 						{
 							// place in front of hand
-							if (playSpot.x < windowWidth/2)
+							if (playSpot.x < tableWidth/2)
 							{
 								hand.remove(selectedCard);
 								hand.add(0, selectedCard);
@@ -1040,8 +1019,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					else
 					{
 						// convert to player 0's view
-						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);						
-						request = "PLACE " + selectedCard.suit + " " + selectedCard.power + " " + p.x + " " + p.y;
+						Point p = fitToPerspective(playSpot.x, playSpot.y, playerNum, 0);
+						int vis = selectedCard.visible ? 1 : 0;
+						request = "PLACE " + selectedCard.suit + " " + selectedCard.power + " " + p.x + " " + p.y + " " + vis;
 						System.out.println("Request: " + request);
 						out.println(request);
 					}					
@@ -1057,7 +1037,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 					// if card placed in hand, pickup instead of move
 					String request;					
 					int handWidth = (hand.size() + 1)*cardWidth/2;
-		            int handX = windowWidth/2 - handWidth/2;
+		            int handX = tableWidth/2 - handWidth/2;
 					if (playSpot.y > handThresholdY && playSpot.x > handX - cardWidth 
 	                		&& playSpot.x < handX + handWidth)
 					{
