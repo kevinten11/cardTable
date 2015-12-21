@@ -54,6 +54,10 @@ public class PitchModel {
 		{
 			drainToDeck(players.get(i).hand);
 		}	
+		for (int i = 0; i < deck.size(); i++)
+		{
+			deck.get(i).visible = false;
+		}
 		deck.shuffle();
 		sendOutCommand("RESET");
 	}
@@ -227,6 +231,7 @@ public class PitchModel {
 									if (drew != null)
 									{						
 										cReq.card = drew;
+										drew.visible = false;
 										hand.add(drew);
 										output.writeObject(cReq);
 										sendHandCounts();

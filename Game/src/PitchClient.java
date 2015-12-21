@@ -224,14 +224,19 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         	Object response;
         	try 
         	{
-        		new Thread(new Runnable() {
+        		new Thread(new Runnable() 
+        		{
                     @Override
-                    public void run() {
-                        while(true) {
+                    public void run() 
+                    {
+                        while(true) 
+                        {
                             updateGraphics();
-                            try {
+                            try 
+                            {
 								Thread.sleep(50);
-							} catch (InterruptedException e) {
+							} catch (InterruptedException e) 
+                            {
 								// TODO Auto-generated catch block
 								e.printStackTrace();
 							}
@@ -272,6 +277,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				{									
 							case DRAW:
 								hand.add(card);
+								card.visible = false;
 								break;
 								
 							case FLIP:
@@ -534,7 +540,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
             }
             
             // draw the click and drag box
-            if (leftMouseDown)
+            if (leftMouseDown && initialClick != null)
             {
             	int topLeftX;
             	int topLeftY;
@@ -869,7 +875,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 						out.writeObject("RESET");
 					}
 				}
-				else if (e.getKeyCode() == KeyEvent.VK_O)
+				else if (e.getKeyCode() == KeyEvent.VK_O || e.getKeyCode() == KeyEvent.VK_S)
 				{
 					orderHand();
 				}

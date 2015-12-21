@@ -27,12 +27,6 @@ public class Card implements Serializable
 		this(suit, Integer.parseInt(num));
 	}
 	
-	public Card(String suit, String num, String vis)
-	{
-		this(suit, num);
-		visible = vis.equals("1");
-	}
-	
 	public Card(String suit, int num, boolean vis, Point location)
 	{
 		this(suit, num);
