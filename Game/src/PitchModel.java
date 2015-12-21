@@ -1,9 +1,7 @@
-import java.awt.Point;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 
 public class PitchModel {
@@ -31,18 +29,19 @@ public class PitchModel {
 		}
 	}
 
-	public void addPlayer(Socket socket)
+	public void addPlayer(ObjectInputStream in, ObjectOutputStream out) throws IOException
 	{
 		int numPlayers = players.size();
-		players.add(new Player(socket, numPlayers));	
+		players.add(new Player(numPlayers, in, out));	
 		players.get(numPlayers).start();
 		sendHandCounts();
 	}
 	
 	/**
 	 * Moves all cards to deck and shuffles
+	 * @throws IOException 
 	 */
-	public void resetState()
+	public void resetState() throws IOException
 	{
 		// move all table cards to discard pile
 		clearTable();
@@ -91,33 +90,35 @@ public class PitchModel {
 	
 	/**
 	 * Sends out the counts of all players' hands
+	 * @throws IOException 
 	 */
-	public void sendHandCounts()
+	public void sendHandCounts() throws IOException
 	{
-		String countString = "HAND COUNTS: ";
+		ArrayList<Integer> counts = new ArrayList<Integer>();
 		
 		// build counts string
 		for (int i = 0; i < players.size(); i++)
 		{
-			countString += players.get(i).hand.size() + " ";
+			counts.add(players.get(i).hand.size());
 		}
 		
 		// send out counts to all players
 		for (int i = 0; i < players.size(); i++)
 		{
-			players.get(i).output.println(countString);
+			players.get(i).output.writeObject(counts);
 		}
 	}
 	
 	/**
 	 * Sends out a command to all players
 	 * @param s String of the command to send
+	 * @throws IOException 
 	 */
-	public void sendOutCommand(String s)
+	public void sendOutCommand(Object s) throws IOException
 	{
 		for (int i = 0; i < players.size(); i++)
 		{
-			players.get(i).output.println(s);
+			players.get(i).output.writeObject(s);
 		}
 	}
 	
@@ -153,41 +154,26 @@ public class PitchModel {
 	class Player extends Thread 
 	{
 		int number;
-		Socket socket;
-		BufferedReader input;
-		PrintWriter output;
+		ObjectInputStream input;
+		ObjectOutputStream output;
 		ConcurrentArrayList<Card> hand;
 		
 		/**
 		 * Creates a player based on the number and socket
 		 * @param socket
 		 * @param number
+		 * @throws IOException 
 		 */
-		public Player(Socket socket, int number)
+		public Player(int number, ObjectInputStream in, ObjectOutputStream out) throws IOException
 		{
-			this.socket = socket;
 			this.number = number;
 			hand = new ConcurrentArrayList<Card>();
-			try 
-			{
-				input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-				output = new PrintWriter(socket.getOutputStream(), true);
-			}
-			catch (IOException e)
-			{
-				System.out.println("Player lost: " + e);
-			}
-			output.println("PLAYER " + number);
+			output = out;
+			input = in;
+			output.writeObject(number);
 			
-			// send out table state
-			String tableString = "TABLE:";
-			for (int i = 0; i < tableCards.size(); i++)
-			{
-				Card card = tableCards.get(i);
-				Point point = card.location;
-				tableString += " " + card.suit + " " + card.power + " " + point.x + " " + point.y + " " + (card.visible ? "1" : "0");
-			}
-			output.println(tableString);
+			// send out table cards
+			output.writeObject(tableCards.listCopy());
 			
 			
 			System.out.println("Hello to Player " + number);
@@ -203,123 +189,119 @@ public class PitchModel {
 				while (true)
 				{					
 					// get client commands
-					String request = input.readLine();
+					Object request = input.readObject();
 					if (request == null)
 					{
 						// do stuff?
 					}
-					else if (request.startsWith("DRAW FROM DECK") && deck.size() > 0)
+					else if (request instanceof CardRequest)
 					{
-						Card drew = deck.get(0);
-						deck.remove(drew);
-						
-						if (drew != null)
-						{							
-							hand.add(drew);
-							output.println("DREW " + drew.suit + " " + drew.power);
-							sendHandCounts();
-						}
-					}
-					else if (request.startsWith("PLACE "))
-					{
-						// info is suit, power, x, y, vis
-						String[] info = request.substring(6).split(" ");
-						Card card = stringToRef.get(info[0] + " " + info[1]);
-						card.visible = info[4].equals("1");
-						// if valid card, then place it
-						if (hand.contains(card))
-						{
-							hand.remove(card);
-							Point cardPoint = new Point(Integer.parseInt(info[2]), Integer.parseInt(info[3]));
-							card.location = cardPoint;
-							tableCards.add(card);
-							sendOutCommand(request + " " + number);
-							sendHandCounts();
-						}
+						CardRequest cReq = (CardRequest) request;
+        				Card card = cReq.card;
+        				switch(cReq.type)
+        				{
+							case DISCARD:
+								// if in hand remove it and send to that player, send out counts
+								if (hand.contains(card))
+								{
+									hand.remove(card);
+									discardPile.add(card);
+									output.writeObject(request);
+									sendHandCounts();
+								}
+								// if card is on table, send out to all players
+								else if (tableCards.contains(card))
+								{
+									tableCards.remove(card);
+									discardPile.add(card);
+									sendOutCommand(request);
+								}
+								break;
 								
+							case DRAW:
+								if (deck.size() > 0)
+								{
+									Card drew = deck.get(0);
+									deck.remove(drew);
+									
+									if (drew != null)
+									{						
+										cReq.card = drew;
+										hand.add(drew);
+										output.writeObject(cReq);
+										sendHandCounts();
+									}
+								}
+								break;
+								
+							case FLIP:
+								// check hand				
+								if (hand.contains(card))
+								{
+									// if found in hand send the command to just the player
+									hand.tryGet(card).visible = card.visible;
+									output.writeObject(cReq);
+								}
+								else if (tableCards.contains(card))
+								{
+									// if on the field send the command to everyone
+									tableCards.tryGet(card).visible = card.visible;
+									sendOutCommand(cReq);			
+								}
+								break;
+								
+							case MOVE:
+								Card foundCard = tableCards.tryGet(card);
+								if (foundCard != null)
+								{
+									foundCard.location = card.location;
+									sendOutCommand(cReq);
+								}
+								break;
+								
+							case PICKUP:
+								// if found, process and send out request
+								if (tableCards.contains(card))
+								{
+									tableCards.remove(card);
+									hand.add(card);								
+									sendOutCommand(request);
+									sendHandCounts();	
+								}
+								break;
+								
+							case PLACE:
+								// if valid card, then place it
+								if (hand.contains(card))
+								{
+									hand.remove(card);
+									tableCards.add(card);
+									sendOutCommand(cReq);
+									sendHandCounts();
+								}
+								break;
+								
+							default:
+								break;		        				
+        				}
 					}
-					else if (request.startsWith("MOVE "))
+					else if (request instanceof String)
 					{
-						// info is suit, power, x, y
-						String[] info = request.substring(5).split(" ");
-						Card card = stringToRef.get(info[0] + " " + info[1]);
-						
-						// if card is a valid table card, move it
-						Card foundCard = tableCards.tryGet(card);
-						if (foundCard != null)
-						{
-							Point cardPoint = new Point(Integer.parseInt(info[2]), Integer.parseInt(info[3]));
-							foundCard.location = cardPoint;
-							sendOutCommand(request + " " + number);
-						}
-					}
-					else if (request.startsWith("FLIP"))
-					{
-						// info is suit power vis
-						String[] info = request.substring(5).split(" ");
-						Card card = stringToRef.get(info[0] + " " + info[1]);		
-						boolean vis = info[2].equals("1");
-						
-						// check hand				
-						if (hand.contains(card))
-						{
-							// if found in hand send the command to just the player
-							card.visible = vis;
-							output.println(request);
-						}
-						else if (tableCards.contains(card))
-						{
-							// if on the field send the command to everyone
-							card.visible = vis;
-							sendOutCommand(request);			
-						}
-					}
-					else if (request.startsWith("PICKUP"))
-					{
-						// info is suit, power
-						String[] info = request.substring(7).split(" ");
-						String cardString = info[0] + " " + info[1];
-						Card card = stringToRef.get(cardString);
-						
-						// if found, process and send out request
-						if (tableCards.contains(card))
-						{
-							tableCards.remove(card);
-							hand.add(card);								
-							sendOutCommand(request + " " + (card.visible ? "1" : "0") + " " + number);
-							sendHandCounts();	
-						}
-					}
-					else if (request.startsWith("DISCARD"))
-					{
-						String[] info = request.substring(8).split(" ");
-						String cardString = info[0] + " " + info[1];
-						Card card = stringToRef.get(cardString);
-						
-						// if in hand remove it and send to that player, send out counts
-						if (hand.contains(card))
-						{
-							hand.remove(card);
-							discardPile.add(card);
-							output.println(request);
-							sendHandCounts();
-						}
-						// if card is on table, send out to all players
-						else if (tableCards.contains(card))
-						{
-							tableCards.remove(card);
-							discardPile.add(card);
-							sendOutCommand(request);
-						}
-					}
-					else if (request.startsWith("RESET"))
-					{
-						resetState();
-					}
-					else if (request.startsWith("CLEAR TABLE"))
-					{
-						clearTable();
-						sendOutCommand(request);
+						String res = (String) request;
+        				switch (res)
+        				{
+        					case "RESET":
+        						resetState();
+        						break;
+        					
+        					case "CLEAR TABLE":
+        						clearTable();
+        						sendOutCommand(request);
+        						break;
+        						
+        					default:
+        						break;
+        				}
 					}
 					sleep(10);
 				}

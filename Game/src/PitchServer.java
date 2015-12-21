@@ -1,6 +1,5 @@
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
@@ -18,23 +17,23 @@ public class PitchServer {
 			while (true)
 			{			
 				Socket playerSocket = listener.accept();
-				BufferedReader input = new BufferedReader(new InputStreamReader(playerSocket.getInputStream()));
-				PrintWriter output = new PrintWriter(playerSocket.getOutputStream(), true);
-				String tableName = input.readLine();
+				ObjectOutputStream output = new ObjectOutputStream(playerSocket.getOutputStream());
+				ObjectInputStream input = new ObjectInputStream(playerSocket.getInputStream());	
 				
+				String tableName = (String)input.readObject();
 				if (tableMap.containsKey(tableName))
 				{
 					System.out.println("Found table");
-					output.println("FOUND");
-					tableMap.get(tableName).addPlayer(playerSocket);
+					output.writeObject(true);
+					tableMap.get(tableName).addPlayer(input, output);
 				}
 				else
 				{
 					System.out.println("Creating table: " + tableName);
-					output.println("NOT FOUND");
+					output.writeObject(false);
 					PitchModel model = new PitchModel();
 					tableMap.put(tableName, model);
-					model.addPlayer(playerSocket);
+					model.addPlayer(input, output);
 				}
 			}				
 		}

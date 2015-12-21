@@ -1,7 +1,13 @@
 import java.awt.Point;
+import java.io.Serializable;
 
-public class Card {
+public class Card implements Serializable
+{
 	
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 3854417171042829951L;
 	public int power;
 	public String suit;
 	public boolean visible;
@@ -32,6 +38,11 @@ public class Card {
 		this(suit, num);
 		this.visible = vis;
 		this.location = location;
+	}
+	
+	public Card(Card c)
+	{
+		this(c.suit, c.power, c.visible, c.location);
 	}
 	
 	@Override
@@ -81,5 +92,10 @@ public class Card {
     public boolean isBefore(Card c2)
     {
     	return SuitRankings.isBefore( this, c2 );
+    }
+    
+    public String toString()
+    {
+    	return suit + " " + power + location.toString();
     }
 }

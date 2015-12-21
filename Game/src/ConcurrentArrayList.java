@@ -1,18 +1,17 @@
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class ConcurrentArrayList<T> {
+public class ConcurrentArrayList<T>{
 
     /** use this to lock for write operations like add/remove */
     private final Lock readLock;
     /** use this to lock for read operations like get/iterator/contains.. */
     private final Lock writeLock;
     /** the underlying list*/
-    private final List<T> list = new ArrayList<T>();
+    private final ArrayList<T> list = new ArrayList<T>();
 
     {
         ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
@@ -159,5 +158,19 @@ public class ConcurrentArrayList<T> {
         {
             readLock.unlock();
         }
+    }
+    
+    @SuppressWarnings("unchecked")
+	public ArrayList<T> listCopy()
+    {
+    	readLock.lock();
+    	try
+    	{
+    		return (ArrayList<T>) list.clone();
+    	}
+    	finally
+    	{
+    		readLock.unlock();
+    	}
     }
 }
