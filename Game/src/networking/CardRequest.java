@@ -1,4 +1,7 @@
+package networking;
 import java.io.Serializable;
+
+import game.Card;
 
 public class CardRequest implements Serializable{
 	

@@ -1,3 +1,4 @@
+package pitch_gui;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -19,10 +20,14 @@ import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
+
 import javax.imageio.ImageIO;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
-import javax.swing.JOptionPane; 
+import javax.swing.JOptionPane;
+
+import game.Card;
+import networking.CardRequest; 
 
 /** 
  * Main class for the game 

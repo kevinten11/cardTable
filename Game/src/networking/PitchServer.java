@@ -1,8 +1,11 @@
+package networking;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
+
+import game.PitchModel;
 
 public class PitchServer {
 

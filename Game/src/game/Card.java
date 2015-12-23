@@ -1,3 +1,4 @@
+package game;
 import java.awt.Point;
 import java.io.Serializable;
 
