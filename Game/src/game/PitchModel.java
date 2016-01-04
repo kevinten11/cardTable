@@ -3,27 +3,25 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
 
 import networking.CardRequest;
 import utilities.ConcurrentArrayList;
 
 public class PitchModel {
 
-	ConcurrentArrayList<Card> deck;
-	ConcurrentArrayList<Card> discardPile;
+	Pile deck;
+	Pile discardPile;
 	ConcurrentArrayList<Card> tableCards;
 	ConcurrentArrayList<Player> players;
-	HashMap<String, Card> stringToRef;
-	
+	ConcurrentArrayList<Pile> freePiles;
 	
 	public PitchModel()
 	{
-		deck = new ConcurrentArrayList<Card>();
-		discardPile = new ConcurrentArrayList<Card>();
+		deck = new Pile(false);
+		discardPile = new Pile(true);
 		players = new ConcurrentArrayList<Player>();
 		tableCards = new ConcurrentArrayList<Card>();
-		stringToRef = new HashMap<String, Card>();
+		freePiles = new ConcurrentArrayList<Pile>();
 		try {
 			addCardsToDeck();
 			deck.shuffle();
@@ -58,10 +56,6 @@ public class PitchModel {
 		{
 			drainToDeck(players.get(i).hand);
 		}	
-		for (int i = 0; i < deck.size(); i++)
-		{
-			deck.get(i).visible = false;
-		}
 		deck.shuffle();
 		sendOutCommand("RESET");
 	}
@@ -91,6 +85,20 @@ public class PitchModel {
 		{
 			Card last = from.get(from.size() - 1);
 			from.remove(last);
+			last.visible = false;
+			deck.add(last);
+		}
+	}
+	
+	/**
+	 * Takes all cards from a list and puts them in deck
+	 * @param from    list to drain
+	 */
+	public void drainToDeck(Pile from)
+	{
+		while (from.size() > 0)
+		{
+			Card last = from.pop();
 			last.visible = false;
 			deck.add(last);
 		}
@@ -143,15 +151,12 @@ public class PitchModel {
 			{
 				Card card = new Card(s, i);
 				deck.add(card);
-				stringToRef.put(s + " " + i, card);
 			}
 		}
 		Card redJ = new Card("red", -1);
 		deck.add(redJ);
-		stringToRef.put("red -1", redJ);
 		Card blackJ = new Card("black", -1);
 		deck.add(blackJ);
-		stringToRef.put("black -1", blackJ);
 	}
 	
 	/**
@@ -229,8 +234,7 @@ public class PitchModel {
 							case DRAW:
 								if (deck.size() > 0)
 								{
-									Card drew = deck.get(0);
-									deck.remove(drew);
+									Card drew = deck.pop();
 									
 									if (drew != null)
 									{						

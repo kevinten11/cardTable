@@ -5,7 +5,7 @@ import java.util.Iterator;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
-public class ConcurrentArrayList<T>{
+public class ConcurrentArrayList<T> implements Iterable<T>{
 
     /** use this to lock for write operations like add/remove */
     private final Lock readLock;
@@ -41,6 +41,19 @@ public class ConcurrentArrayList<T>{
             list.add(e);
         }
         finally
+        {
+            writeLock.unlock();
+        }
+    }
+    
+    public void add(int index, T e)
+    {
+    	writeLock.lock();
+    	try
+    	{
+    		list.add(index, e);
+    	}
+    	finally
         {
             writeLock.unlock();
         }

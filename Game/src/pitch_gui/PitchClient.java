@@ -225,29 +225,30 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         @SuppressWarnings("unchecked")
 		void run() throws Exception
         {
-        	updateGraphics();
-        	Object response;
+        	// Make a frame-painter thread
+        	new Thread(new Runnable() 
+    		{
+                @Override
+                public void run() 
+                {
+                    while(true) 
+                    {
+                        updateGraphics();
+                        try 
+                        {
+							Thread.sleep(50);
+						} catch (InterruptedException e) 
+                        {
+							e.printStackTrace();
+						}
+                    }
+                }
+            }).start();
+        	
+        	// read responses from server
         	try 
         	{
-        		new Thread(new Runnable() 
-        		{
-                    @Override
-                    public void run() 
-                    {
-                        while(true) 
-                        {
-                            updateGraphics();
-                            try 
-                            {
-								Thread.sleep(50);
-							} catch (InterruptedException e) 
-                            {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-                        }
-                    }
-                }).start();
+        		Object response;
         		response = in.readObject();
         		if (response instanceof Integer)
         		{
@@ -386,7 +387,6 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         				// if we get an unintended sever call, just sleep a bit
         				Thread.sleep(50);
         			}
-        			updateGraphics();
         		}
         	}
         	catch (Exception e)
