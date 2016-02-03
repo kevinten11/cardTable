@@ -2,7 +2,7 @@ package game;
 import java.awt.Point;
 import java.io.Serializable;
 
-public class Card implements Serializable
+public class Card implements Serializable 
 {
 	
 	/**

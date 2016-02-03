@@ -78,6 +78,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         int tableWidth = 700; 
         int tableHeight = 700;
         int handThresholdY;
+        int anchorIconWidth = 30;
+        int anchorIconHeight = 30;
+        Scorecard scorecard;
         
         static int PORT = 36636;
         Socket socket;
@@ -91,6 +94,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         Insets insets; 
         Image background;
         Image cardBack; 
+        Image anchorIcon;
         Card selectedCard;
         
         ArrayList<Card> hand = new ArrayList<Card>();
@@ -170,6 +174,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
         	readInCardImages();
         	this.addKeyListener(this);
         	this.addMouseListener(this);
+        	scorecard = new Scorecard();
+        	scorecard.setVisible(false);
+        	scorecard.setDefaultCloseOperation(HIDE_ON_CLOSE);
         }
         
         public static void main(String[] args) throws Exception
@@ -204,6 +211,11 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
     		    // read in card back
     		    cardBack = ImageIO.read(new File("Resources" + File.separatorChar + "playing-card-back.jpg"));
     		    cardBack = cardBack.getScaledInstance(cardWidth, cardHeight, Image.SCALE_SMOOTH);
+    		    
+    		    // anchor
+    		    anchorIcon = ImageIO.read(new File("Resources" + File.separatorChar + "Anchor.png"));
+    		    anchorIcon = anchorIcon.getScaledInstance(anchorIconWidth, anchorIconHeight, Image.SCALE_SMOOTH);
+    		    
     		    
     		} catch (IOException e) 
     		{
@@ -880,7 +892,7 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 						out.writeObject("RESET");
 					}
 				}
-				else if (e.getKeyCode() == KeyEvent.VK_O || e.getKeyCode() == KeyEvent.VK_S)
+				else if (e.getKeyCode() == KeyEvent.VK_O)
 				{
 					orderHand();
 				}
@@ -896,6 +908,10 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 				else if (e.getKeyCode() == KeyEvent.VK_F)
 				{
 					flipHandFaceUp();
+				}
+				else if (e.getKeyCode() == KeyEvent.VK_S)
+				{
+					scorecard.setVisible(true);
 				}
 			}
 			catch (IOException arg)
@@ -968,8 +984,9 @@ public class PitchClient extends JFrame implements KeyListener, MouseListener
 				
 				// see if a card was clicked
 				Card clickedCard = null;
-				for (Card c : tableCards)
+				for (int i = tableCards.size() - 1; i >= 0; i--)
 				{
+					Card c = tableCards.get(i);
 					if (getScreenBounds(c).contains(clickPoint))
 					{
 						clickedCard = c;
